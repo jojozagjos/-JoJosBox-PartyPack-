@@ -23,7 +23,7 @@ export function renderHost(ctx, state) {
   const hostQ = el('hostQuestion');
   const feed = el('hostFeed');
 
-  // Phase banner with pop animation
+  // Phase banner
   const banner = document.createElement('div');
   banner.className = 'phaseTag pop';
   banner.textContent = state.phase.toUpperCase();
@@ -65,7 +65,9 @@ export function renderHost(ctx, state) {
     next();
     const timer = setInterval(next, 2200); ctx._tutorialTimer = timer;
 
-    const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='center'; row.style.marginTop='10px';
+    // VIP skip (host screen)
+    const row = document.createElement('div');
+    row.style.display='flex'; row.style.justifyContent='center'; row.style.marginTop='10px';
     const skip = document.createElement('button'); skip.className='btn'; skip.textContent='Skip tutorial (VIP)';
     skip.onclick = () => ctx.socket.emit('game:event', { code: state.code, type: 'vip:skipTutorial' });
     row.appendChild(skip); feed.appendChild(row);
@@ -83,7 +85,7 @@ export function renderHost(ctx, state) {
     const q = document.createElement('div'); q.className='question';
     q.textContent = 'Write your alibi now!';
     feed.appendChild(q);
-    // 3-2-1 mini countdown at start of phase
+    // mini countdown
     const cd = document.createElement('div'); cd.className='countdown'; feed.appendChild(cd);
     let n = 3; cd.textContent = n;
     const t = setInterval(()=>{ n--; cd.textContent = n>0 ? n : 'Go!'; if (n<=0){ clearInterval(t); setTimeout(()=>cd.remove(),600);} }, 600);
@@ -96,7 +98,7 @@ export function renderHost(ctx, state) {
     feed.appendChild(q);
     if (state.round?.questions) {
       state.round.questions.forEach(q => {
-        const d = document.createElement('div'); d.className='item';
+        const d = document.createElement('div'); d.className = 'item';
         d.textContent = `${q.name}: ${q.text}`;
         feed.appendChild(d);
       });
@@ -121,7 +123,6 @@ export function renderHost(ctx, state) {
     body.innerHTML = `Crime: <strong>${c.location}</strong>, <strong>${c.weapon}</strong>, motive <strong>${c.motive}</strong>`;
     wrap.appendChild(body);
     feed.appendChild(wrap);
-    vibrate([40, 60, 40]);
     return;
   }
 
@@ -134,29 +135,58 @@ export function renderHost(ctx, state) {
 }
 
 export function renderPlayer(ctx, state) {
-  const { el } = ctx.helpers;
+  const { el, isVIP } = ctx.helpers;
   const ui = el('playerUI');
 
+  // VIP controls on PHONE
   if (state.phase === 'lobby') {
     const d = document.createElement('div'); d.className='item';
-    d.textContent = 'Waiting for VIP to start…';
+    d.textContent = isVIP() ? 'You are VIP. You can start the game.' : 'Waiting for VIP to start…';
     ui.appendChild(d);
+
+    // Mini lobby list on player devices
+    const listWrap = document.createElement('div'); listWrap.className = 'list'; ui.appendChild(listWrap);
+    const list = (state.playersInLobby && Array.isArray(state.playersInLobby) ? state.playersInLobby : (state.players || []));
+    list.forEach(p => {
+      const li = document.createElement('div'); li.className = 'item';
+      li.textContent = p.name + (p.id === state.vipId ? ' ★VIP' : '');
+      listWrap.appendChild(li);
+    });
+
+    if (isVIP()) {
+      const b = document.createElement('button'); b.className='btn'; b.textContent='Start game (VIP)';
+      b.onclick = () => { ctx.socket.emit('game:event', { code: state.code, type: 'vip:start' }); };
+      ui.appendChild(b);
+    }
+    return;
+  }
+
+  if (state.phase === 'tutorial') {
+    const t = document.createElement('div'); t.className = 'item';
+    t.textContent = 'Tutorial playing on the host screen…';
+    ui.appendChild(t);
+
+    if (isVIP()) {
+      const s = document.createElement('button'); s.className='btn'; s.textContent='Skip tutorial (VIP)';
+      s.onclick = () => ctx.socket.emit('game:event', { code: state.code, type: 'vip:skipTutorial' });
+      ui.appendChild(s);
+    }
     return;
   }
 
   if (state.phase === 'alibi') {
-    const t = document.createElement('textarea'); t.placeholder = 'Where were you at 10pm?'; t.className='pop';
+    const ta = document.createElement('textarea'); ta.placeholder = 'Where were you at 10pm?'; ta.className='pop';
     const b = document.createElement('button'); b.className='btn'; b.textContent = 'Submit alibi';
-    b.onclick = () => { ctx.socket.emit('game:event', { code: state.code, type: 'alibi:submit', payload: { text: t.value } }); vibrate(20); };
-    ui.appendChild(t); ui.appendChild(b);
+    b.onclick = () => { ctx.socket.emit('game:event', { code: state.code, type: 'alibi:submit', payload: { text: ta.value } }); vibrate(20); };
+    ui.appendChild(ta); ui.appendChild(b);
     return;
   }
 
   if (state.phase === 'interrogate') {
-    const t = document.createElement('textarea'); t.placeholder = 'Ask one sharp question…'; t.className='pop';
+    const ta = document.createElement('textarea'); ta.placeholder = 'Ask one sharp question…'; ta.className='pop';
     const b = document.createElement('button'); b.className='btn'; b.textContent = 'Submit question';
-    b.onclick = () => { ctx.socket.emit('game:event', { code: state.code, type: 'interrogate:submit', payload: { text: t.value } }); vibrate(20); };
-    ui.appendChild(t); ui.appendChild(b);
+    b.onclick = () => { ctx.socket.emit('game:event', { code: state.code, type: 'interrogate:submit', payload: { text: ta.value } }); vibrate(20); };
+    ui.appendChild(ta); ui.appendChild(b);
     return;
   }
 
@@ -168,7 +198,6 @@ export function renderPlayer(ctx, state) {
       const btn = document.createElement('button'); btn.className = 'item';
       btn.textContent = p.name;
       btn.onclick = () => { ctx.socket.emit('game:event', { code: state.code, type: 'vote:submit', payload: { suspectId: p.id } }); vibrate([20,40]); };
-      btn.addEventListener('mouseenter', () => btn.classList.add('glow'));
       list.appendChild(btn);
     });
     ui.appendChild(list);
