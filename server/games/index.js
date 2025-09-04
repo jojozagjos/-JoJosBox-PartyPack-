@@ -1,5 +1,2 @@
-import { sampleTrivia } from './sample-trivia/server.js';
-
-export const gamesRegistry = {
-  [sampleTrivia.key]: sampleTrivia
-};
+import { loadGamesRegistry } from './_auto/loader.js';
+export const gamesRegistry = await loadGamesRegistry();

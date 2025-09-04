@@ -7,41 +7,34 @@
     <style>
       :root { color-scheme: light dark; --bg:#0f1020; --card:#16172b; --ink:#f4f5ff; --muted:#b8b9cc; --accent:#7c5cff; --accent2:#32d6ff; }
       html, body { height: 100%; margin: 0; }
-      body { background: radial-gradient(1200px 600px at 20% -10%, #1c1d36, #0f1020); color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+      body { background: radial-gradient(1200px 600px at 20% -10%, #1c1d36, #0f1020); color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
       .screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-      .card { width: min(920px, 92vw); min-height: min(680px, 88vh); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)) , var(--card);
+      .card { width: min(980px, 94vw); min-height: min(720px, 90vh); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)) , var(--card);
               border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; box-shadow: 0 30px 60px rgba(0,0,0,0.35); padding: 20px 20px 28px; display: flex; flex-direction: column; gap: 14px; }
       .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
       .grow { flex: 1 1 auto; }
       h1 { margin: 0; font-weight: 800; letter-spacing: .3px; }
       .muted { color: var(--muted); }
-      input { padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--ink); outline: none; }
-      .btn { padding: 12px 16px; border-radius: 12px; border: none; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #0b0b14; font-weight: 800; cursor: pointer; box-shadow: 0 8px 24px rgba(124,92,255,.3); }
+      input, textarea, select { width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--ink); outline: none; }
+      textarea { min-height: 120px; resize: vertical; }
+      .btn { padding: 10px 14px; border-radius: 12px; border: none; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #0b0b14; font-weight: 800; cursor: pointer; box-shadow: 0 8px 24px rgba(124,92,255,.3); }
       .pill { padding: 6px 10px; border-radius: 9999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
       .big { font-size: 26px; font-weight: 900; letter-spacing: .5px; }
-      .question { font-size: clamp(24px, 3.6vw, 36px); font-weight: 900; margin: 6px 0 10px; }
+      .question { font-size: clamp(22px, 3.4vw, 36px); font-weight: 900; margin: 6px 0 10px; }
       .choices { display: grid; gap: 10px; grid-template-columns: 1fr; }
-      .choiceBtn { padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: var(--ink);
-                   cursor: pointer; font-weight: 700; transition: transform .1s ease, box-shadow .12s ease, background .2s; text-align: left; }
-      .choiceBtn:hover { transform: translateY(-1px); box-shadow: 0 16px 30px rgba(0,0,0,0.25); background: rgba(255,255,255,0.06); }
-      .choiceBtn.locked { background: rgba(50, 214, 255, 0.18); border-color: rgba(50, 214, 255, 0.45); }
       .timerWrap { background: rgba(255,255,255,0.08); height: 12px; border-radius: 9999px; overflow: hidden; }
       .timerBar { height: 100%; width: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transform-origin: left center; }
-      .leaderboard { margin-top: 8px; }
-      .lb-row { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); margin-top: 6px; }
-      .medal { width: 22px; display: inline-block; text-align: center; }
-      .fadeIn { animation: fadeIn .28s ease both; }
-      .pop { animation: pop .16s ease both; }
-      @keyframes fadeIn { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
-      @keyframes pop { 0% { transform: scale(.97);} 100% { transform: scale(1);} }
-
+      .list { display: grid; gap: 8px; }
+      .item { padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); }
+      .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+      .pill2 { padding: 8px 10px; border-radius: 9999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); text-align: center; }
       .tabs { display: flex; gap: 10px; }
       .tab { padding: 8px 12px; border-radius: 9999px; background: rgba(255,255,255,0.06); cursor: pointer; user-select: none; }
       .tab.active { background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #0b0b14; font-weight: 800; }
       .hidden { display: none !important; }
       .stage { display: flex; flex-direction: column; gap: 12px; min-height: 0; flex: 1; }
       .spacer { flex: 1; }
-      .grid2 { display: grid; gap: 14px; grid-template-columns: 1fr; }
+      .desc { color: var(--muted); font-size: 14px; }
     </style>
   </head>
   <body>
@@ -55,51 +48,66 @@
           </div>
         </div>
 
-        <!-- Player-first stage (no Host button here anymore) -->
+        <!-- Player stage -->
         <div id="playerStage" class="stage">
-          <div class="grid2">
-            <div>
-              <div class="row">
-                <span class="pill">Join a room</span>
-              </div>
-              <div class="row">
-                <input id="joinCode" placeholder="Room code" class="grow" />
-                <input id="playerName" placeholder="Your name" class="grow" />
-                <button id="joinBtn" class="btn">Join</button>
-              </div>
-              <div id="playerArea" class="fadeIn hidden">
-                <p class="muted">You are in room <span class="big" id="playerRoomCode"></span></p>
-                <div id="playerTimer" class="timerWrap hidden"><div class="timerBar" id="playerTimerBar"></div></div>
-                <div id="playerUI"></div>
-              </div>
-            </div>
+          <div id="playerJoinRow" class="row">
+            <input id="joinCode" placeholder="Room code" class="grow" />
+            <input id="playerName" placeholder="Your name" class="grow" />
+            <button id="joinBtn" class="btn">Join</button>
+          </div>
+          <div id="playerArea" class="hidden">
+            <div id="playerTimer" class="timerWrap hidden"><div class="timerBar" id="playerTimerBar"></div></div>
+            <div id="playerUI"></div>
           </div>
           <div class="spacer"></div>
         </div>
 
-        <!-- Host stage: will show a game picker until a room is created -->
+        <!-- Host stage -->
         <div id="hostStage" class="stage hidden">
-          <div id="hostPre" class="fadeIn">
+          <div id="hostPre" class="">
             <div class="row"><span class="pill">Pick a game to host</span></div>
             <div id="gamePickerHost"></div>
           </div>
 
           <div id="hostLive" class="hidden">
             <div class="row">
-              <span class="pill">Host controls</span>
+              <span class="pill">Host</span>
               <span class="muted">Room code: <span class="big" id="roomCode"></span></span>
               <span class="muted grow"></span>
               <span class="muted">Players open: <code id="joinUrl"></code></span>
             </div>
-            <div id="startWrap" class="row">
-              <button id="startGameBtn" class="btn">Start game</button>
+
+            <!-- Settings (lobby only) -->
+            <div id="settingsPanel" class="item hidden">
+              <div class="row"><strong>Game settings</strong> <span class="muted">(ms)</span></div>
+              <div class="row">
+                <label class="muted">Tutorial</label><input id="s_tutorialMs" type="number" min="3000" max="180000" />
+                <label class="muted">Brief</label><input id="s_briefMs" type="number" min="3000" max="180000" />
+                <label class="muted">Alibi</label><input id="s_alibiMs" type="number" min="3000" max="180000" />
+                <label class="muted">Interrogate</label><input id="s_interrogateMs" type="number" min="3000" max="180000" />
+                <label class="muted">Vote</label><input id="s_voteMs" type="number" min="3000" max="180000" />
+                <label class="muted">Reveal</label><input id="s_revealMs" type="number" min="3000" max="180000" />
+              </div>
             </div>
 
+            <!-- Lobby -->
+            <div id="lobbyBlock" class="">
+              <div class="row"><span class="pill">Lobby</span> <span class="muted">VIP starts the game</span></div>
+              <div id="lobbyPlayers" class="players"></div>
+            </div>
+
+            <!-- Tutorial / Round / Reveal feed -->
             <div id="hostTimer" class="timerWrap hidden"><div class="timerBar" id="hostTimerBar"></div></div>
             <div id="hostQuestion" class="question"></div>
-            <div id="hostChoices" class="choices"></div>
-            <p class="muted" id="hostMeta"></p>
-            <div class="leaderboard" id="hostLeaderboard"></div>
+            <div class="list" id="hostFeed"></div>
+
+            <!-- End-of-game options (host only) -->
+            <div id="endOptions" class="row hidden">
+              <button id="btnSame" class="btn">Play again (same players)</button>
+              <button id="btnNew" class="btn">Reset for new players</button>
+              <button id="btnMenu" class="btn">Return to menu</button>
+            </div>
+
             <div class="spacer"></div>
           </div>
         </div>

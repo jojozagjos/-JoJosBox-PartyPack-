@@ -31,10 +31,15 @@ app.get('*', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  // Let any client fetch the list of games before room creation
+  // Catalog with descriptions & defaults
   socket.on('games:list', () => {
     socket.emit('games:list:resp', Object.values(gamesRegistry).map(g => ({
-      key: g.key, name: g.name, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers
+      key: g.key,
+      name: g.name,
+      description: g.description,
+      minPlayers: g.minPlayers,
+      maxPlayers: g.maxPlayers,
+      defaultSettings: g.defaultSettings || {}
     })));
   });
 
@@ -43,6 +48,12 @@ io.on('connection', (socket) => {
     socket.join(code);
     socket.emit('host:roomCreated', { code });
     io.to(code).emit('room:state', rooms.getPublicState(code));
+  });
+
+  socket.on('host:returnToMenu', ({ code }) => {
+    rooms.endRoom(code, 'Returning to menu');
+    // tell the host to go back to picker
+    socket.emit('host:returnedToMenu', {});
   });
 
   socket.on('host:switchGame', ({ code, gameKey }) => {

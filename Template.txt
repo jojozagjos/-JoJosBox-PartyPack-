@@ -1,0 +1,30 @@
+mkdir -p server/games/quickdraw client/games/quickdraw
+
+cat > server/games/quickdraw/server.js <<'JS'
+export const game = {
+  key: 'quickdraw',
+  name: 'Quick Draw',
+  description: 'Answer fast. Points for speed and correctness.',
+  minPlayers: 2, maxPlayers: 12,
+  defaultSettings: { roundMs: 15000, revealMs: 4000 },
+  createInitialState(){ return { phase:'lobby', settings:{roundMs:15000,revealMs:4000}, question:null, answers:{}, phaseDeadline:null, _t:null }; },
+  public(room){ return { phase: room.gameState.phase, question: room.gameState.question, players: room.players }; },
+  onStart(room){ const s=room.gameState; s.question='2+2?'; s.phase='round'; s.phaseDeadline=Date.now()+s.settings.roundMs; room._notify(); },
+  onEvent(room, {socketId,type,payload}){ /* ... */ },
+  onDispose(){ }
+};
+JS
+
+cat > client/games/quickdraw/client.js <<'JS'
+export const meta = { key:'quickdraw', name:'Quick Draw', description:'Answer fast.' };
+export function renderHost(ctx, state){
+  ctx.el('hostQuestion').textContent = state.question || 'Get ready…';
+}
+export function renderPlayer(ctx, state){
+  const ui = ctx.el('playerUI');
+  if (state.phase === 'lobby') { ui.textContent = 'Waiting to start…'; return; }
+  const btn = document.createElement('button'); btn.className='btn'; btn.textContent='4';
+  btn.onclick = ()=> ctx.socket.emit('game:event', { code: state.code, type: 'answer', payload:{ v:4 }});
+  ui.appendChild(btn);
+}
+JS
