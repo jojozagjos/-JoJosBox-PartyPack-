@@ -1,0 +1,18 @@
+.instr-overlay{position:fixed;inset:0;background:rgba(10,12,18,.94);color:#fff;display:none;z-index:9999;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.instr-stage{position:absolute;inset:0;display:grid;place-items:center;padding:20px}
+.instr-card{width:min(720px,92vw);border-radius:16px;background:#0f1218;box-shadow:0 10px 30px rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.08);overflow:hidden}
+.instr-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+.instr-title{font-size:20px;letter-spacing:.4px}
+.instr-steps{position:relative;height:min(360px,64vh);display:grid;place-items:center;padding:18px}
+.instr-step{position:absolute;inset:0;display:grid;place-items:center;opacity:0;transform:translateY(12px);animation:instrIn .6s ease forwards}
+.instr-step .bubble{background:#121826;border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px 16px;max-width:560px;text-align:center;line-height:1.5}
+.instr-foot{display:flex;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1px solid rgba(255,255,255,.08)}
+.instr-btn{appearance:none;border:1px solid rgba(255,255,255,.18);background:#141a24;color:#fff;border-radius:10px;padding:10px 14px;cursor:pointer}
+.instr-btn:hover{filter:brightness(1.06)}
+.instr-muted{opacity:.75;font-size:14px}
+
+@keyframes instrIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes instrHint{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+
+/* Simple pictograms */
+.instr-emoji{font-size:42px;display:block;margin-bottom:10px;animation:instrHint 2.2s ease-in-out infinite}
