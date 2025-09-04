@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
+    <canvas id="fxCanvas"></canvas>
     <div class="screen">
       <div class="card">
         <div class="row" style="align-items:flex-start;">
@@ -36,6 +37,11 @@
           <div id="hostPre" class="">
             <div class="row"><span class="pill">Pick a game to host</span></div>
             <div id="gamePickerHost"></div>
+          </div>
+
+          <!-- Back button row -->
+          <div class="row">
+            <button id="btnBackToList" class="btn hidden">← Back to game list</button>
           </div>
 
           <div id="hostLive" class="hidden">
