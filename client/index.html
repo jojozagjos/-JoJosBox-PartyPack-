@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>JoJos Partypack</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 16px; max-width: 720px; margin: auto; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      button { padding: 8px 12px; }
+      input { padding: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>JoJos Partypack</h1>
+
+    <div class="card">
+      <h2>Host</h2>
+      <div class="row">
+        <label for="gameKey">Game</label>
+        <select id="gameKey"></select>
+        <button id="createRoomBtn">Create room</button>
+      </div>
+      <div id="hostArea" style="display:none;">
+        <p>Room code: <strong id="roomCode"></strong></p>
+        <p>Share this URL with players on their phones: <code id="joinUrl"></code></p>
+        <div class="row">
+          <button id="startGameBtn">Start game</button>
+          <button id="nextBtn">Next</button>
+        </div>
+        <pre id="hostState"></pre>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Player</h2>
+      <div class="row">
+        <input id="joinCode" placeholder="Room code" />
+        <input id="playerName" placeholder="Your name" />
+        <button id="joinBtn">Join</button>
+      </div>
+      <div id="playerArea" style="display:none;">
+        <p>You are in room <strong id="playerRoomCode"></strong></p>
+        <div id="playerUI"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
