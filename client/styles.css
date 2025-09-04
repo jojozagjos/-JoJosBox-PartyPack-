@@ -164,3 +164,21 @@ html, body { height:100%; overflow:hidden; }
 .card { overflow: hidden; }
 .stage { min-height: 0; }
 #hostLive, #hostPre, #playerStage { overflow:auto; }
+
+/* --- Fullscreen card & FX canvas layering fixes --- */
+#fxCanvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .6; }
+body, html { height: 100%; overflow: hidden; }
+.screen { position: relative; z-index: 1; min-height: calc(var(--vh, 1vh) * 100); padding: 0; }
+.card.fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  padding: 16px;
+  z-index: 1;
+}
+.card.fullscreen .stage { overflow: auto; }
