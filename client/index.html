@@ -5,47 +5,104 @@
     <title>JoJos Partypack</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      :root { color-scheme: light dark; }
-      body { font-family: system-ui, sans-serif; padding: 16px; max-width: 820px; margin: auto; }
-      .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-      button { padding: 8px 12px; cursor: pointer; }
-      input, select { padding: 8px; }
-      pre { background: #f7f7f7; padding: 12px; border-radius: 8px; overflow: auto; }
-      code { user-select: all; }
+      :root { color-scheme: light dark; --bg:#0f1020; --card:#16172b; --ink:#f4f5ff; --muted:#b8b9cc; --accent:#7c5cff; --accent2:#32d6ff; }
+      html, body { height: 100%; margin: 0; }
+      body { background: radial-gradient(1200px 600px at 20% -10%, #1c1d36, #0f1020); color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+      .screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+      .card { width: min(920px, 92vw); min-height: min(680px, 88vh); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)) , var(--card);
+              border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; box-shadow: 0 30px 60px rgba(0,0,0,0.35); padding: 20px 20px 28px; display: flex; flex-direction: column; gap: 14px; }
+      .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .grow { flex: 1 1 auto; }
+      h1 { margin: 0; font-weight: 800; letter-spacing: .3px; }
+      .muted { color: var(--muted); }
+      input { padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.06); color: var(--ink); outline: none; }
+      .btn { padding: 12px 16px; border-radius: 12px; border: none; background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #0b0b14; font-weight: 800; cursor: pointer; box-shadow: 0 8px 24px rgba(124,92,255,.3); }
+      .pill { padding: 6px 10px; border-radius: 9999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
+      .big { font-size: 26px; font-weight: 900; letter-spacing: .5px; }
+      .question { font-size: clamp(24px, 3.6vw, 36px); font-weight: 900; margin: 6px 0 10px; }
+      .choices { display: grid; gap: 10px; grid-template-columns: 1fr; }
+      .choiceBtn { padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: var(--ink);
+                   cursor: pointer; font-weight: 700; transition: transform .1s ease, box-shadow .12s ease, background .2s; text-align: left; }
+      .choiceBtn:hover { transform: translateY(-1px); box-shadow: 0 16px 30px rgba(0,0,0,0.25); background: rgba(255,255,255,0.06); }
+      .choiceBtn.locked { background: rgba(50, 214, 255, 0.18); border-color: rgba(50, 214, 255, 0.45); }
+      .timerWrap { background: rgba(255,255,255,0.08); height: 12px; border-radius: 9999px; overflow: hidden; }
+      .timerBar { height: 100%; width: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transform-origin: left center; }
+      .leaderboard { margin-top: 8px; }
+      .lb-row { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); margin-top: 6px; }
+      .medal { width: 22px; display: inline-block; text-align: center; }
+      .fadeIn { animation: fadeIn .28s ease both; }
+      .pop { animation: pop .16s ease both; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(6px);} to { opacity: 1; transform: translateY(0);} }
+      @keyframes pop { 0% { transform: scale(.97);} 100% { transform: scale(1);} }
+
+      .tabs { display: flex; gap: 10px; }
+      .tab { padding: 8px 12px; border-radius: 9999px; background: rgba(255,255,255,0.06); cursor: pointer; user-select: none; }
+      .tab.active { background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #0b0b14; font-weight: 800; }
+      .hidden { display: none !important; }
+      .stage { display: flex; flex-direction: column; gap: 12px; min-height: 0; flex: 1; }
+      .spacer { flex: 1; }
+      .grid2 { display: grid; gap: 14px; grid-template-columns: 1fr; }
     </style>
   </head>
   <body>
-    <h1>JoJos Partypack</h1>
-
-    <div class="card">
-      <h2>Host</h2>
-      <div class="row">
-        <label for="gameKey">Game</label>
-        <select id="gameKey"></select>
-        <button id="createRoomBtn">Create room</button>
-      </div>
-      <div id="hostArea" style="display:none;">
-        <p>Room code: <strong id="roomCode"></strong></p>
-        <p>Players open this URL on their phones: <code id="joinUrl"></code></p>
-        <div class="row">
-          <button id="startGameBtn">Start game</button>
-          <button id="nextBtn">Next</button>
+    <div class="screen">
+      <div class="card">
+        <div class="row" style="align-items:flex-start;">
+          <h1 class="grow">JoJos Partypack</h1>
+          <div class="tabs">
+            <div id="tabPlayer" class="tab active">Player</div>
+            <div id="tabHost" class="tab">Host</div>
+          </div>
         </div>
-        <pre id="hostState"></pre>
-      </div>
-    </div>
 
-    <div class="card">
-      <h2>Player</h2>
-      <div class="row">
-        <input id="joinCode" placeholder="Room code" />
-        <input id="playerName" placeholder="Your name" />
-        <button id="joinBtn">Join</button>
-      </div>
-      <div id="playerArea" style="display:none;">
-        <p>You are in room <strong id="playerRoomCode"></strong></p>
-        <div id="playerUI"></div>
+        <!-- Player-first stage (no Host button here anymore) -->
+        <div id="playerStage" class="stage">
+          <div class="grid2">
+            <div>
+              <div class="row">
+                <span class="pill">Join a room</span>
+              </div>
+              <div class="row">
+                <input id="joinCode" placeholder="Room code" class="grow" />
+                <input id="playerName" placeholder="Your name" class="grow" />
+                <button id="joinBtn" class="btn">Join</button>
+              </div>
+              <div id="playerArea" class="fadeIn hidden">
+                <p class="muted">You are in room <span class="big" id="playerRoomCode"></span></p>
+                <div id="playerTimer" class="timerWrap hidden"><div class="timerBar" id="playerTimerBar"></div></div>
+                <div id="playerUI"></div>
+              </div>
+            </div>
+          </div>
+          <div class="spacer"></div>
+        </div>
+
+        <!-- Host stage: will show a game picker until a room is created -->
+        <div id="hostStage" class="stage hidden">
+          <div id="hostPre" class="fadeIn">
+            <div class="row"><span class="pill">Pick a game to host</span></div>
+            <div id="gamePickerHost"></div>
+          </div>
+
+          <div id="hostLive" class="hidden">
+            <div class="row">
+              <span class="pill">Host controls</span>
+              <span class="muted">Room code: <span class="big" id="roomCode"></span></span>
+              <span class="muted grow"></span>
+              <span class="muted">Players open: <code id="joinUrl"></code></span>
+            </div>
+            <div id="startWrap" class="row">
+              <button id="startGameBtn" class="btn">Start game</button>
+            </div>
+
+            <div id="hostTimer" class="timerWrap hidden"><div class="timerBar" id="hostTimerBar"></div></div>
+            <div id="hostQuestion" class="question"></div>
+            <div id="hostChoices" class="choices"></div>
+            <p class="muted" id="hostMeta"></p>
+            <div class="leaderboard" id="hostLeaderboard"></div>
+            <div class="spacer"></div>
+          </div>
+        </div>
       </div>
     </div>
 

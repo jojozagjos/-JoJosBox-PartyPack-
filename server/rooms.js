@@ -3,7 +3,7 @@ import { customAlphabet } from 'nanoid';
 const nanoid = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 4);
 
 export function createRoomsManager(io, gamesRegistry) {
-  const rooms = new Map();
+  const rooms = new Map(); // code -> room
 
   function listGames() {
     return Object.values(gamesRegistry).map(g => ({
@@ -14,13 +14,16 @@ export function createRoomsManager(io, gamesRegistry) {
   function createRoom({ ownerSocketId, gameKey }) {
     const code = nanoid();
     const game = gamesRegistry[gameKey] || Object.values(gamesRegistry)[0];
-    rooms.set(code, {
+    const room = {
       code,
+      createdAt: Date.now(),
       ownerSocketId,
-      players: [],
+      players: [], // {id, name, score}
       gameKey: game.key,
-      gameState: game.createInitialState()
-    });
+      gameState: game.createInitialState(),
+      _notify: () => io.to(code).emit('room:state', getPublicState(code))
+    };
+    rooms.set(code, room);
     return code;
   }
 
@@ -28,28 +31,36 @@ export function createRoomsManager(io, gamesRegistry) {
     const room = rooms.get(code);
     if (!room) return null;
     const game = gamesRegistry[room.gameKey];
+    const players = room.players.map(p => ({
+      id: p.id, name: p.name, score: p.score || 0
+    }));
+    const gamePublic = game.public(room);
     return {
       code: room.code,
       gameKey: room.gameKey,
       gameName: game.name,
-      players: room.players.map(p => ({ id: p.id, name: p.name })),
-      phase: room.gameState.phase,
-      questions: room.gameState.questions ?? undefined,
-      questionIndex: room.gameState.questionIndex ?? undefined
+      hostId: room.ownerSocketId,
+      players,
+      ...gamePublic
     };
   }
 
   function addPlayer(code, { id, name }) {
     const room = rooms.get(code);
     if (!room) return { ok: false, reason: 'Room not found' };
+    if (room.ownerSocketId === id) {
+      return { ok: false, reason: 'Host cannot join as a player' };
+    }
     const game = gamesRegistry[room.gameKey];
+
     if (room.players.find(p => p.id === id)) {
       return { ok: true, player: room.players.find(p => p.id === id) };
     }
     if (room.players.length >= game.maxPlayers) {
       return { ok: false, reason: 'Room full' };
     }
-    const player = { id, name: name?.trim() || `Player${room.players.length + 1}` };
+
+    const player = { id, name: name?.trim() || `Player${room.players.length + 1}`, score: 0 };
     room.players.push(player);
     return { ok: true, player };
   }
@@ -58,6 +69,10 @@ export function createRoomsManager(io, gamesRegistry) {
     const room = rooms.get(code);
     if (!room || room.ownerSocketId !== requesterId) return;
     const game = gamesRegistry[gameKey] || Object.values(gamesRegistry)[0];
+    // Dispose any timers from prior game
+    const prevGame = gamesRegistry[room.gameKey];
+    prevGame?.onDispose?.(room);
+
     room.gameKey = game.key;
     room.gameState = game.createInitialState();
   }
@@ -80,6 +95,9 @@ export function createRoomsManager(io, gamesRegistry) {
     const roomsToUpdate = [];
     for (const room of rooms.values()) {
       if (room.ownerSocketId === socketId) {
+        // Host left: end and dispose
+        const game = gamesRegistry[room.gameKey];
+        game?.onDispose?.(room);
         io.to(room.code).emit('room:ended', { reason: 'Host disconnected' });
         rooms.delete(room.code);
         continue;

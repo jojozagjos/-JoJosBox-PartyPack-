@@ -14,9 +14,7 @@ const PORT = process.env.PORT || 3000;
 
 const app = express();
 const server = http.createServer(app);
-const io = new SocketIOServer(server, {
-  cors: { origin: '*' }
-});
+const io = new SocketIOServer(server, { cors: { origin: '*' } });
 
 const rooms = createRoomsManager(io, gamesRegistry);
 
@@ -33,10 +31,17 @@ app.get('*', (req, res) => {
 });
 
 io.on('connection', (socket) => {
+  // Let any client fetch the list of games before room creation
+  socket.on('games:list', () => {
+    socket.emit('games:list:resp', Object.values(gamesRegistry).map(g => ({
+      key: g.key, name: g.name, minPlayers: g.minPlayers, maxPlayers: g.maxPlayers
+    })));
+  });
+
   socket.on('host:createRoom', ({ gameKey }) => {
     const code = rooms.createRoom({ ownerSocketId: socket.id, gameKey });
     socket.join(code);
-    socket.emit('host:roomCreated', { code, games: rooms.listGames() });
+    socket.emit('host:roomCreated', { code });
     io.to(code).emit('room:state', rooms.getPublicState(code));
   });
 
