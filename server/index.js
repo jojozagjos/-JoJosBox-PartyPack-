@@ -57,10 +57,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('player:join', ({ code, name }) => {
-    const { ok, reason, player } = rooms.addPlayer(code, { id: socket.id, name });
+    const { ok, reason, player, reconnected } = rooms.addPlayer(code, { id: socket.id, name });
     if (!ok) return socket.emit('player:joinFailed', { reason });
     socket.join(code);
-    socket.emit('player:joined', { code, playerId: player.id });
+    socket.emit('player:joined', { code, playerId: player.id, reconnected: !!reconnected });
     io.to(code).emit('room:state', rooms.getPublicState(code));
   });
 

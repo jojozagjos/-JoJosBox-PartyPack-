@@ -24,8 +24,8 @@ export function createRoomsManager(io, gamesRegistry) {
       code,
       createdAt: Date.now(),
       ownerSocketId,            // host socket id (stage screen)
-      vipId: null,              // first player to join becomes VIP
-      players: [],              // {id, name, score}
+      vipId: null,              // first player to join becomes VIP (socket id for now)
+      players: [],              // {id: socketId, name, score, online: true|false}
       gameKey: game.key,
       gameState: game.createInitialState(),
       _notify: () => io.to(code).emit('room:state', getPublicState(code)),
@@ -58,7 +58,7 @@ export function createRoomsManager(io, gamesRegistry) {
       hostId: room.ownerSocketId,
       vipId: room.vipId,
       players,
-      // surface schema to the host UI (read-only)
+      // expose schema so host UI can render compact settings
       settingsSchema: game.settingsSchema || {},
       ...gamePublic
     };
@@ -70,16 +70,30 @@ export function createRoomsManager(io, gamesRegistry) {
     if (room.ownerSocketId === id) return { ok: false, reason: 'Host cannot join as a player' };
 
     const game = gamesRegistry[room.gameKey];
-    if (room.players.find(p => p.id === id)) {
-      return { ok: true, player: room.players.find(p => p.id === id) };
+
+    // RECONNECT: If a player with same name exists but is offline, reclaim that seat
+    const existingByName = name ? room.players.find(p => (p.name || '').toLowerCase() === name.trim().toLowerCase()) : null;
+    if (existingByName && existingByName.online === false) {
+      const oldId = existingByName.id;
+      existingByName.id = id;
+      existingByName.online = true;
+      // If that seat was VIP, move VIP to the new socket id
+      if (room.vipId === oldId) room.vipId = id;
+      return { ok: true, player: existingByName, reconnected: true };
     }
-    if (room.players.length >= game.maxPlayers) {
+
+    // Normal join: block if full
+    const onlineCount = room.players.filter(p => p.online !== false).length;
+    if (onlineCount >= game.maxPlayers) {
       return { ok: false, reason: 'Room full' };
     }
-    const player = { id, name: name?.trim() || `Player${room.players.length + 1}`, score: 0 };
+
+    // If someone with the same name is already online, we still allow a *new* seat
+    // (you can add stricter checks later if you want to prevent duplicate names)
+    const player = { id, name: name?.trim() || `Player${room.players.length + 1}`, score: 0, online: true };
     room.players.push(player);
-    if (!room.vipId) room.vipId = player.id; // first player becomes VIP
-    return { ok: true, player };
+    if (!room.vipId) room.vipId = player.id; // first online player becomes VIP
+    return { ok: true, player, reconnected: false };
   }
 
   function switchGame(code, gameKey, requesterId) {
@@ -113,12 +127,13 @@ export function createRoomsManager(io, gamesRegistry) {
         endRoom(room.code, 'Host disconnected');
         continue;
       }
-      const before = room.players.length;
-      room.players = room.players.filter(p => p.id !== socketId);
-      if (room.vipId === socketId) {
-        room.vipId = room.players[0]?.id || null;
+      const player = room.players.find(p => p.id === socketId);
+      if (player) {
+        // Mark offline but keep their seat for reconnection
+        player.online = false;
+        // Do NOT clear VIP; keep VIP tied to the old id until they reconnect.
+        roomsToUpdate.push(room.code);
       }
-      if (room.players.length !== before) roomsToUpdate.push(room.code);
     }
     return { roomsToUpdate };
   }

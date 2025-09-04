@@ -10,19 +10,19 @@ export const alibiGame = {
   key: 'alibi',
   name: 'The Alibi',
   description: 'Improvised detective mystery. One player is secretly the criminal. Everyone writes alibis, asks questions, and then votes.',
-  minPlayers: 2,
+  minPlayers: 3,
   maxPlayers: 12,
 
-  // Only expose the handful we actually want editable.
-  // Everything else stays internal and non-editable.
+  // Show only the fields we want editable
   settingsSchema: {
-    tutorialMs:   { label: 'Tutorial',    type: 'number', min: 3000, max: 60000,  step: 1000, editable: true },
-    alibiMs:      { label: 'Alibi time',  type: 'number', min: 10000, max: 90000, step: 5000, editable: true },
-    interrogateMs:{ label: 'Questions',   type: 'number', min: 10000, max: 90000, step: 5000, editable: true },
-    voteMs:       { label: 'Voting',      type: 'number', min: 5000,  max: 60000, step: 5000, editable: true },
-    // Internal timings (not editable)
-    briefMs:      { label: 'Brief',       type: 'number', min: 3000, max: 15000,  step: 1000, editable: false },
-    revealMs:     { label: 'Reveal',      type: 'number', min: 3000, max: 15000,  step: 1000, editable: false }
+    // NOT editable:
+    tutorialMs:   { label: 'Tutorial',    type: 'number', min: 3000,  max: 60000,  step: 1000, editable: false },
+    briefMs:      { label: 'Brief',       type: 'number', min: 3000,  max: 15000,  step: 1000, editable: false },
+    revealMs:     { label: 'Reveal',      type: 'number', min: 3000,  max: 15000,  step: 1000, editable: false },
+    // Editable (host can tune these, but we’ll render in seconds in the client):
+    alibiMs:      { label: 'Alibi time',  type: 'number', min: 10000, max: 90000,  step: 5000, editable: true },
+    interrogateMs:{ label: 'Questions',   type: 'number', min: 10000, max: 90000,  step: 5000, editable: true },
+    voteMs:       { label: 'Voting',      type: 'number', min: 5000,  max: 60000,  step: 5000, editable: true }
   },
 
   defaultSettings: {
@@ -38,11 +38,11 @@ export const alibiGame = {
     return {
       phase: 'lobby',
       settings: { ...this.defaultSettings },
-      crime: null,            // {location, weapon, motive}
+      crime: null,
       criminalId: null,
-      alibis: {},             // playerId -> text
-      questions: {},          // playerId -> text
-      votes: {},              // voterId -> suspectId
+      alibis: {},
+      questions: {},
+      votes: {},
       phaseDeadline: null,
       _timeout: null
     };
@@ -159,12 +159,12 @@ export const alibiGame = {
     s.phase = phase;
     s.phaseDeadline = ms ? Date.now() + ms : null;
     s._timeout = ms ? setTimeout(() => {
-      if (phase === 'tutorial')      this._goto(room, 'brief', s.settings.briefMs);
-      else if (phase === 'brief')    this._goto(room, 'alibi', s.settings.alibiMs);
-      else if (phase === 'alibi')    this._goto(room, 'interrogate', s.settings.interrogateMs);
+      if (phase === 'tutorial')         this._goto(room, 'brief', s.settings.briefMs);
+      else if (phase === 'brief')       this._goto(room, 'alibi', s.settings.alibiMs);
+      else if (phase === 'alibi')       this._goto(room, 'interrogate', s.settings.interrogateMs);
       else if (phase === 'interrogate') this._goto(room, 'vote', s.settings.voteMs);
-      else if (phase === 'vote')     this._goto(room, 'reveal', s.settings.revealMs, () => this._goto(room, 'done', 0));
-      else if (phase === 'reveal')   this._goto(room, 'done', 0);
+      else if (phase === 'vote')        this._goto(room, 'reveal', s.settings.revealMs, () => this._goto(room, 'done', 0));
+      else if (phase === 'reveal')      this._goto(room, 'done', 0);
       if (onAfter) onAfter();
       room._notify();
     }, ms) : null;
