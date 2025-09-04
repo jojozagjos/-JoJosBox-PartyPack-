@@ -12,7 +12,8 @@ export function createRoomsManager(io, gamesRegistry) {
       description: g.description,
       minPlayers: g.minPlayers,
       maxPlayers: g.maxPlayers,
-      defaultSettings: g.defaultSettings || {}
+      defaultSettings: g.defaultSettings || {},
+      settingsSchema: g.settingsSchema || {}
     }));
   }
 
@@ -57,6 +58,8 @@ export function createRoomsManager(io, gamesRegistry) {
       hostId: room.ownerSocketId,
       vipId: room.vipId,
       players,
+      // surface schema to the host UI (read-only)
+      settingsSchema: game.settingsSchema || {},
       ...gamePublic
     };
   }
@@ -91,7 +94,6 @@ export function createRoomsManager(io, gamesRegistry) {
   function startGame(code, requesterId) {
     const room = rooms.get(code);
     if (!room) return;
-    // Allow host OR VIP to start
     if (room.ownerSocketId !== requesterId && room.vipId !== requesterId) return;
     const game = gamesRegistry[room.gameKey];
     game.onStart(room);
@@ -114,7 +116,7 @@ export function createRoomsManager(io, gamesRegistry) {
       const before = room.players.length;
       room.players = room.players.filter(p => p.id !== socketId);
       if (room.vipId === socketId) {
-        room.vipId = room.players[0]?.id || null; // re-assign VIP if needed
+        room.vipId = room.players[0]?.id || null;
       }
       if (room.players.length !== before) roomsToUpdate.push(room.code);
     }

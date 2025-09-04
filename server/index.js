@@ -18,20 +18,15 @@ const io = new SocketIOServer(server, { cors: { origin: '*' } });
 
 const rooms = createRoomsManager(io, gamesRegistry);
 
-// Serve built client in production
 const clientDist = path.join(__dirname, '..', 'dist');
 app.use(express.static(clientDist));
 app.get('/health', (_, res) => res.send('OK'));
 app.get('*', (req, res) => {
-  try {
-    res.sendFile(path.join(clientDist, 'index.html'));
-  } catch {
-    res.status(200).send('Dev mode. Run `npm run dev` to start client.');
-  }
+  try { res.sendFile(path.join(clientDist, 'index.html')); }
+  catch { res.status(200).send('Dev mode. Run `npm run dev` to start client.'); }
 });
 
 io.on('connection', (socket) => {
-  // Catalog with descriptions & defaults
   socket.on('games:list', () => {
     socket.emit('games:list:resp', Object.values(gamesRegistry).map(g => ({
       key: g.key,
@@ -39,7 +34,8 @@ io.on('connection', (socket) => {
       description: g.description,
       minPlayers: g.minPlayers,
       maxPlayers: g.maxPlayers,
-      defaultSettings: g.defaultSettings || {}
+      defaultSettings: g.defaultSettings || {},
+      settingsSchema: g.settingsSchema || {}
     })));
   });
 
@@ -52,7 +48,6 @@ io.on('connection', (socket) => {
 
   socket.on('host:returnToMenu', ({ code }) => {
     rooms.endRoom(code, 'Returning to menu');
-    // tell the host to go back to picker
     socket.emit('host:returnedToMenu', {});
   });
 
@@ -63,10 +58,7 @@ io.on('connection', (socket) => {
 
   socket.on('player:join', ({ code, name }) => {
     const { ok, reason, player } = rooms.addPlayer(code, { id: socket.id, name });
-    if (!ok) {
-      socket.emit('player:joinFailed', { reason });
-      return;
-    }
+    if (!ok) return socket.emit('player:joinFailed', { reason });
     socket.join(code);
     socket.emit('player:joined', { code, playerId: player.id });
     io.to(code).emit('room:state', rooms.getPublicState(code));

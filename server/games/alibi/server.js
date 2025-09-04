@@ -10,8 +10,20 @@ export const alibiGame = {
   key: 'alibi',
   name: 'The Alibi',
   description: 'Improvised detective mystery. One player is secretly the criminal. Everyone writes alibis, asks questions, and then votes.',
-  minPlayers: 3,
+  minPlayers: 2,
   maxPlayers: 12,
+
+  // Only expose the handful we actually want editable.
+  // Everything else stays internal and non-editable.
+  settingsSchema: {
+    tutorialMs:   { label: 'Tutorial',    type: 'number', min: 3000, max: 60000,  step: 1000, editable: true },
+    alibiMs:      { label: 'Alibi time',  type: 'number', min: 10000, max: 90000, step: 5000, editable: true },
+    interrogateMs:{ label: 'Questions',   type: 'number', min: 10000, max: 90000, step: 5000, editable: true },
+    voteMs:       { label: 'Voting',      type: 'number', min: 5000,  max: 60000, step: 5000, editable: true },
+    // Internal timings (not editable)
+    briefMs:      { label: 'Brief',       type: 'number', min: 3000, max: 15000,  step: 1000, editable: false },
+    revealMs:     { label: 'Reveal',      type: 'number', min: 3000, max: 15000,  step: 1000, editable: false }
+  },
 
   defaultSettings: {
     tutorialMs: 10000,
@@ -46,7 +58,7 @@ export const alibiGame = {
     return {
       phase: s.phase,
       phaseDeadline: s.phaseDeadline,
-      settings: s.settings, // so host can render inputs
+      settings: s.settings,
       playersInLobby: room.players.map(p => ({ id:p.id, name:p.name })),
       vipId: room.vipId,
       crime: (s.phase === 'reveal' || s.phase === 'done') ? s.crime : null,
@@ -62,49 +74,31 @@ export const alibiGame = {
   onStart(room){
     const s = room.gameState;
     if (room.players.length < this.minPlayers) return;
-    // reset round content
     s.alibis = {}; s.questions = {}; s.votes = {};
     s.crime = { location: randItem(LOCATIONS), weapon: randItem(WEAPONS), motive: randItem(MOTIVES) };
-    // pick criminal
     const idx = Math.floor(Math.random()*room.players.length);
     s.criminalId = room.players[idx].id;
-    // secret brief
     const brief = `Keep it cool. Stick to: ${s.crime.location}, ${s.crime.weapon}, motive ${s.crime.motive}.`;
     room._send(s.criminalId, 'alibi:brief', { brief, crime: s.crime });
-    // tutorial first
     this._goto(room, 'tutorial', s.settings.tutorialMs);
   },
 
   onEvent(room, { socketId, type, payload }){
     const s = room.gameState;
 
-    // Host can update settings in lobby
     if (type === 'host:updateSettings' && room.ownerSocketId === socketId && s.phase === 'lobby') {
-      const next = sanitizeSettings(payload || {}, this.defaultSettings);
-      s.settings = next;
+      s.settings = sanitizeSettings(payload || {}, this.defaultSettings, this.settingsSchema);
       room._notify();
       return;
     }
 
-    // VIP can start the game from lobby
     if (type === 'vip:start' && socketId === room.vipId && s.phase === 'lobby') {
       this.onStart(room);
       return;
     }
 
-    // VIP can skip tutorial
     if (type === 'vip:skipTutorial' && socketId === room.vipId && s.phase === 'tutorial') {
       this._goto(room, 'brief', s.settings.briefMs);
-      return;
-    }
-
-    if (s.phase === 'tutorial') {
-      // no-op until timer or skip
-      return;
-    }
-
-    if (s.phase === 'brief') {
-      // after brief ends automatically to alibi
       return;
     }
 
@@ -130,7 +124,7 @@ export const alibiGame = {
 
     if (s.phase === 'vote' && type === 'vote:submit') {
       const target = payload?.suspectId;
-      if (target && target !== socketId && room.players.find(p => p.id === target)) { // prevent self-vote
+      if (target && target !== socketId && room.players.find(p => p.id === target)) {
         s.votes[socketId] = target;
         if (Object.keys(s.votes).length >= room.players.length) {
           this._goto(room, 'reveal', s.settings.revealMs, () => this._goto(room, 'done', 0));
@@ -141,10 +135,8 @@ export const alibiGame = {
       return;
     }
 
-    // Host post-game options
     if (s.phase === 'done' && socketId === room.ownerSocketId) {
       if (type === 'host:restartSame') {
-        // keep players, reset VIP to first in list
         room.vipId = room.players[0]?.id || null;
         s.alibis = {}; s.questions = {}; s.votes = {}; s.criminalId = null; s.crime = null;
         s.phase = 'lobby'; s.phaseDeadline = null; clearTimer(s._timeout);
@@ -152,7 +144,6 @@ export const alibiGame = {
         return;
       }
       if (type === 'host:restartNew') {
-        // clear players; VIP resets; back to lobby
         room.players = []; room.vipId = null;
         s.alibis = {}; s.questions = {}; s.votes = {}; s.criminalId = null; s.crime = null;
         s.phase = 'lobby'; s.phaseDeadline = null; clearTimer(s._timeout);
@@ -193,13 +184,16 @@ function mapTexts(players, dict){
   }));
 }
 
-function sanitizeSettings(raw, defaults){
+function sanitizeSettings(raw, defaults, schema){
   const out = { ...defaults };
-  for (const k of Object.keys(defaults)) {
-    let v = Number(raw[k]);
+  for (const [key, meta] of Object.entries(schema || {})) {
+    if (!meta.editable) continue; // ignore non-editable fields
+    let v = Number(raw[key]);
     if (!Number.isFinite(v)) continue;
-    v = Math.max(3000, Math.min(180000, v)); // clamp 3s..180s
-    out[k] = v;
+    const min = Number.isFinite(meta.min) ? meta.min : 3000;
+    const max = Number.isFinite(meta.max) ? meta.max : 180000;
+    v = Math.max(min, Math.min(max, v));
+    out[key] = v;
   }
   return out;
 }
