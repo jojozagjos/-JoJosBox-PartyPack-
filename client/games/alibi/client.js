@@ -1,178 +1,205 @@
+/**
+ * The Alibi — host-first UX
+ * - Host shows rich visuals + timer + “check phones” cues for input phases.
+ * - Players only see inputs during input phases; otherwise a “Look at the host screen” card.
+ */
+
 export const meta = {
   key: 'alibi',
   name: 'The Alibi',
-  description: 'Improvised detective mystery. One player is the criminal. Alibis → Interrogation → Vote → Reveal.'
+  description: 'Improv a cover story. One criminal. Everyone else suspects.'
 };
 
-export function renderHost(ctx, state) {
-  const { el, show, escapeHtml } = ctx;
-  const lobbyBlock = el('lobbyBlock'), lobbyPlayers = el('lobbyPlayers');
-  const hostQuestion = el('hostQuestion'), hostFeed = el('hostFeed');
-  const endOptions = el('endOptions');
-
-  // Lobby players list and VIP badge (during lobby and tutorial)
-  lobbyPlayers.innerHTML = '';
-  if (state.phase === 'lobby' || state.phase === 'tutorial') {
-    show(lobbyBlock, true);
-    (state.playersInLobby || []).forEach(p => {
-      const d = document.createElement('div'); d.className = 'pill2';
-      d.textContent = p.name + (p.id === state.vipId ? ' ★VIP' : '');
-      lobbyPlayers.appendChild(d);
-    });
-  } else {
-    show(lobbyBlock, false);
+// Tiny helpers
+function typewriter(el, text, speed=18) {
+  el.textContent = '';
+  let i = 0;
+  function tick(){
+    el.textContent = text.slice(0, i++);
+    if (i <= text.length) requestAnimationFrame(tick);
   }
-
-  // Host feed & question
-  hostQuestion.textContent = '';
-  hostFeed.innerHTML = '';
-  show(endOptions, state.phase === 'done');
-
-  if (state.phase === 'lobby') {
-    hostQuestion.textContent = 'Waiting for VIP to start…';
-    return;
-  }
-  if (state.phase === 'tutorial') {
-    hostQuestion.textContent = 'How to play';
-    hostFeed.innerHTML = `
-      <div class="item">1. One player is secretly the criminal.</div>
-      <div class="item">2. Everyone writes an alibi consistent with the facts.</div>
-      <div class="item">3. Submit one question to interrogate the suspects.</div>
-      <div class="item">4. Vote on who the criminal is.</div>
-    `;
-    return;
-  }
-  if (state.phase === 'alibi') {
-    hostQuestion.textContent = 'Write your alibi.';
-    (state.round?.alibis || []).forEach(entry => {
-      const it = document.createElement('div'); it.className='item';
-      it.innerHTML = `<strong>${escapeHtml(entry.name)}</strong> — submitted`;
-      hostFeed.appendChild(it);
-    });
-    return;
-  }
-  if (state.phase === 'interrogate') {
-    hostQuestion.textContent = 'Interrogation questions:';
-    (state.round?.questions || []).forEach(entry => {
-      const it = document.createElement('div'); it.className='item';
-      it.innerHTML = `<strong>${escapeHtml(entry.name)}</strong>: ${escapeHtml(entry.text)}`;
-      hostFeed.appendChild(it);
-    });
-    return;
-  }
-  if (state.phase === 'vote') {
-    hostQuestion.textContent = 'Vote: who is the criminal?';
-    return;
-  }
-  if (state.phase === 'reveal') {
-    hostQuestion.innerHTML = `The criminal was <strong>${nameOf(state.criminalId)}</strong>.<br>
-Crime: ${state.crime.location}, ${state.crime.weapon}, motive ${state.crime.motive}.`;
-    const counts = state.round?.votesCount || {};
-    Object.entries(counts).sort((a,b)=>b[1]-a[1]).forEach(([pid, n]) => {
-      const it = document.createElement('div'); it.className='item';
-      it.innerHTML = `${escapeHtml(nameOf(pid))}: ${n} vote(s)`;
-      hostFeed.appendChild(it);
-    });
-  }
-  function nameOf(pid){
-    const p = (state.players || []).find(x => x.id === pid);
-    return p ? p.name : 'Unknown';
-  }
+  tick();
+}
+function underline() {
+  const u = document.createElement('div');
+  u.className = 'alibi-underline';
+  return u;
+}
+function infoCard(html) {
+  const d = document.createElement('div'); d.className = 'item'; d.innerHTML = html; return d;
 }
 
-export function renderHostSettings(ctx, state) {
-  // Example: settings inputs already exist in DOM; keep SDK minimal.
-  // If a game had custom settings UI, it could render here.
+export function renderHost(ctx, state) {
+  const { el } = ctx.helpers;
+  const hostQ = el('hostQuestion');
+  const feed  = el('hostFeed');
+
+  function setHeadline(phaseLabel, title) {
+    const tag = document.createElement('div');
+    tag.className = 'alibi-sub';
+    tag.textContent = phaseLabel.toUpperCase();
+
+    const h = document.createElement('div');
+    h.className = 'alibi-headline';
+    typewriter(h, title);
+
+    feed.appendChild(tag);
+    feed.appendChild(h);
+    feed.appendChild(underline());
+  }
+
+  // LOBBY
+  if (state.phase === 'lobby') {
+    hostQ.textContent = 'Waiting for VIP to start…';
+    const row = document.createElement('div'); row.className = 'cta-row';
+    const start = document.createElement('button'); start.className = 'btn vip'; start.textContent = 'Start game (VIP)';
+    start.onclick = () => ctx.socket.emit('game:event', { code: state.code, type: 'vip:start' });
+    row.appendChild(start);
+    feed.appendChild(row);
+    feed.appendChild(infoCard('<div class="vip-hint">First player is VIP and can start or skip tutorial.</div>'));
+    return;
+  }
+
+  // TUTORIAL
+  if (state.phase === 'tutorial') {
+    setHeadline('Tutorial', 'How to play: The Alibi');
+    // Keep it host-centric; players see “Look at the host screen”
+    feed.appendChild(infoCard('Watch the host screen to learn the rules. The VIP can skip if everyone already knows how to play.'));
+    const row = document.createElement('div'); row.className = 'cta-row';
+    const skip = document.createElement('button'); skip.className = 'btn vip'; skip.textContent = 'Skip tutorial (VIP)';
+    skip.onclick = () => ctx.socket.emit('game:event', { code: state.code, type: 'vip:skipTutorial' });
+    row.appendChild(skip);
+    feed.appendChild(row);
+    return;
+  }
+
+  // BRIEF (criminal receives details)
+  if (state.phase === 'brief') {
+    setHeadline('Briefing', 'One player receives the secret details…');
+    const c = state.crime || {};
+    const grid = document.createElement('div'); grid.className = 'alibi-grid';
+    [
+      ['Location', c.location || '—'],
+      ['Weapon',   c.weapon   || '—'],
+      ['Motive',   c.motive   || '—']
+    ].forEach(([k,v]) => {
+      const card = document.createElement('div'); card.className='evidence-card';
+      card.innerHTML = `<strong>${k}</strong>${v}`;
+      grid.appendChild(card);
+    });
+    feed.appendChild(grid);
+    feed.appendChild(infoCard('<div class="vip-hint">Everyone: Look at the host screen.</div>'));
+    return;
+  }
+
+  // ALIBI (INPUT PHASE)
+  if (state.phase === 'alibi') {
+    setHeadline('Alibi', 'Write your alibi now');
+    feed.appendChild(infoCard('<strong>Check your phones now.</strong><br>Write where you were and what you were doing.'));
+    return;
+  }
+
+  // INTERROGATE (INPUT PHASE)
+  if (state.phase === 'interrogate') {
+    setHeadline('Interrogation', 'Ask one sharp question');
+    feed.appendChild(infoCard('<strong>Check your phones now.</strong><br>Write a question that could trip someone up.'));
+    // Show any questions as they arrive
+    if (state.round?.questions) {
+      state.round.questions.forEach(q => {
+        const d = document.createElement('div'); d.className = 'item';
+        d.textContent = `${q.name}: ${q.text}`;
+        feed.appendChild(d);
+      });
+    }
+    return;
+  }
+
+  // VOTE (INPUT PHASE)
+  if (state.phase === 'vote') {
+    setHeadline('Vote', 'Who is the criminal?');
+    feed.appendChild(infoCard('<strong>Check your phones now.</strong><br>Pick the most suspicious player.'));
+    return;
+  }
+
+  // REVEAL
+  if (state.phase === 'reveal') {
+    setHeadline('Reveal', 'Here is what really happened');
+    const c = state.crime || {};
+    const grid = document.createElement('div'); grid.className = 'alibi-grid';
+    [
+      ['Location', c.location || '—'],
+      ['Weapon',   c.weapon   || '—'],
+      ['Motive',   c.motive   || '—']
+    ].forEach(([k,v]) => {
+      const card = document.createElement('div'); card.className='evidence-card';
+      card.innerHTML = `<strong>${k}</strong>${v}`;
+      grid.appendChild(card);
+    });
+    feed.appendChild(grid);
+    feed.appendChild(infoCard('<div class="vip-hint">Everyone: Look at the host screen.</div>'));
+    return;
+  }
+
+  // DONE
+  if (state.phase === 'done') {
+    setHeadline('Game Over', 'Play again?');
+    const row = document.createElement('div'); row.className = 'cta-row';
+    const same = document.createElement('button'); same.className = 'btn'; same.textContent = 'Same players';
+    const fresh= document.createElement('button'); fresh.className= 'btn'; fresh.textContent = 'New players';
+    same.onclick = () => ctx.socket.emit('game:event', { code: state.code, type: 'host:restartSame' });
+    fresh.onclick= () => ctx.socket.emit('game:event', { code: state.code, type: 'host:restartNew' });
+    row.appendChild(same); row.appendChild(fresh);
+    feed.appendChild(row);
+    return;
+  }
 }
 
 export function renderPlayer(ctx, state) {
-  const { el, show, escapeHtml, socket, stateRef, isVIP } = ctx;
-  const playerUI = el('playerUI');
+  const { el } = ctx.helpers;
+  const ui = el('playerUI');
 
-  playerUI.innerHTML = '';
-  if (state.phase === 'lobby') {
-    const p = document.createElement('p'); p.className='muted';
-    p.textContent = isVIP() ? 'You are VIP. Tap to start when ready.' : 'Waiting for VIP to start…';
-    playerUI.appendChild(p);
-    if (isVIP()) {
-      const b = document.createElement('button'); b.className='btn'; b.textContent='Start game';
-      b.onclick = () => socket.emit('game:event', { code: state.code, type: 'vip:start' });
-      playerUI.appendChild(b);
-    }
-    return;
+  function watchHostCard(text='Look at the host screen') {
+    const d = document.createElement('div'); d.className = 'item'; d.style.textAlign='center';
+    d.innerHTML = `<div style="font-weight:900; font-size:18px; margin-bottom:6px;">${text}</div>
+                   <div class="muted">Your device will prompt you when it’s your turn to type or vote.</div>`;
+    ui.appendChild(d);
   }
-  if (state.phase === 'tutorial') {
-    const steps = [
-      'One of you is secretly the criminal.',
-      'Write an alibi consistent with the facts.',
-      'Interrogate with one question.',
-      'Vote on who the criminal is.'
-    ];
-    const list = document.createElement('div'); list.className='list';
-    steps.forEach(t => {
-      const it = document.createElement('div'); it.className='item'; it.textContent = t;
-      list.appendChild(it);
+  function textInput(placeholder, cta, evtType) {
+    const wrap = document.createElement('div'); wrap.className = 'alibi-stage';
+    const t = document.createElement('textarea'); t.placeholder = placeholder; t.spellcheck = false;
+    const row = document.createElement('div'); row.className='cta-row';
+    const b = document.createElement('button'); b.className='btn'; b.textContent = cta;
+    b.onclick = () => ctx.socket.emit('game:event', { code: state.code, type: evtType, payload: { text: t.value } });
+    row.appendChild(b); wrap.appendChild(t); wrap.appendChild(row);
+    ui.appendChild(wrap);
+    t.focus({ preventScroll: true });
+  }
+  function voteList() {
+    const me = ctx.stateRef.myPlayerId;
+    const others = (state.players || []).filter(p => p.id !== me);
+    if (!others.length) return watchHostCard('Wait for the reveal…');
+    const list = document.createElement('div'); list.className = 'list';
+    others.forEach(p => {
+      const btn = document.createElement('button'); btn.className = 'item'; btn.textContent = p.name;
+      btn.onclick = () => ctx.socket.emit('game:event', { code: state.code, type: 'vote:submit', payload: { suspectId: p.id } });
+      list.appendChild(btn);
     });
-    playerUI.appendChild(list);
-    if (isVIP()) {
-      const b = document.createElement('button'); b.className='btn'; b.textContent='Skip tutorial';
-      b.onclick = () => socket.emit('game:event', { code: state.code, type: 'vip:skipTutorial' });
-      playerUI.appendChild(document.createElement('br'));
-      playerUI.appendChild(b);
-    }
-    return;
+    ui.appendChild(list);
   }
-  if (state.phase === 'alibi') {
-    const ta = document.createElement('textarea');
-    ta.placeholder = 'Where were you at 10pm? Who saw you? Keep it consistent…';
-    const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Submit alibi';
-    btn.onclick = () => {
-      const text = (ta.value || '').trim();
-      if (!text) return;
-      btn.disabled = true;
-      socket.emit('game:event', { code: state.code, type: 'alibi:submit', payload: { text } });
-      playerUI.innerHTML = '<div class="item">Alibi submitted.</div>';
-    };
-    playerUI.append(ta, document.createElement('br'), btn);
-    return;
-  }
-  if (state.phase === 'interrogate') {
-    const ta = document.createElement('textarea');
-    ta.placeholder = 'Write one question to interrogate the suspects…';
-    const btn = document.createElement('button'); btn.className='btn'; btn.textContent='Submit question';
-    btn.onclick = () => {
-      const text = (ta.value || '').trim();
-      if (!text) return;
-      btn.disabled = true;
-      socket.emit('game:event', { code: state.code, type: 'interrogate:submit', payload: { text } });
-      playerUI.innerHTML = '<div class="item">Question submitted.</div>';
-    };
-    playerUI.append(ta, document.createElement('br'), btn);
-    return;
-  }
-  if (state.phase === 'vote') {
-    const title = document.createElement('div'); title.className='question'; title.textContent='Vote: who is the criminal?';
-    const list = document.createElement('div'); list.className='choices';
-    (state.players || []).forEach(p => {
-      if (p.id === stateRef.myPlayerId) return;
-      const b = document.createElement('button'); b.className='btn'; b.textContent = p.name;
-      b.onclick = () => {
-        list.querySelectorAll('button').forEach(x => x.disabled = true);
-        socket.emit('game:event', { code: state.code, type: 'vote:submit', payload: { suspectId: p.id } });
-        el('playerUI').innerHTML = '<div class="item">Vote submitted.</div>';
-      };
-      list.appendChild(b);
-    });
-    playerUI.append(title, list);
-    return;
-  }
-  if (state.phase === 'reveal') {
-    const p = document.createElement('div'); p.className='item'; p.textContent='Revealing the culprit…';
-    playerUI.appendChild(p);
-    return;
-  }
-  if (state.phase === 'done') {
-    const p = document.createElement('div'); p.className='item';
-    p.textContent = 'Round complete. Waiting for host to choose next step.'; playerUI.appendChild(p);
-  }
+
+  if (state.phase === 'lobby')         return watchHostCard('Waiting for VIP to start…');
+  if (state.phase === 'tutorial')      return watchHostCard('Learn the rules');
+  if (state.phase === 'brief')         return watchHostCard('Someone received a secret brief…');
+
+  if (state.phase === 'alibi')         return textInput('Where were you at 10pm?', 'Submit alibi', 'alibi:submit');
+  if (state.phase === 'interrogate')   return textInput('Ask one sharp question…', 'Submit question', 'interrogate:submit');
+  if (state.phase === 'vote')          return voteList();
+
+  if (state.phase === 'reveal')        return watchHostCard('The truth is being revealed…');
+  if (state.phase === 'done')          return watchHostCard('Round finished');
+
+  // Fallback
+  return watchHostCard();
 }
+
+export function renderHostSettings(){ /* compact settings handled by shell */ }

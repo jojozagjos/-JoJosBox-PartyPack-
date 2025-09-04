@@ -228,14 +228,15 @@ btnMenu?.addEventListener('click', () => stateRef.current && socket.emit('host:r
 let timerInterval = null;
 function startTimer(deadline){
   clearInterval(timerInterval);
-  if (!deadline) { show(hostTimer,false); show(playerTimer,false); return; }
-  show(hostTimer,true); show(playerTimer,true);
+  // Host-only timer: players never see the bar
+  if (!deadline) { if (hostTimer) hostTimer.classList.add("hidden"); if (playerTimer) playerTimer.classList.add("hidden"); return; }
+  if (hostTimer) hostTimer.classList.remove("hidden");
+  if (playerTimer) playerTimer.classList.add("hidden");
   const total = Math.max(1, deadline - Date.now());
   timerInterval = setInterval(() => {
     const remaining = Math.max(0, deadline - Date.now());
     const pct = Math.max(0, Math.min(1, remaining / total));
     if (hostTimerBar) hostTimerBar.style.transform = `scaleX(${pct})`;
-    if (playerTimerBar) playerTimerBar.style.transform = `scaleX(${pct})`;
   }, 100);
 }
 
