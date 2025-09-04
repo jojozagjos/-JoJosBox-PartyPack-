@@ -10,7 +10,7 @@ export const alibiGame = {
   key: 'alibi',
   name: 'The Alibi',
   description: 'Improvised detective mystery. One player is secretly the criminal. Everyone writes alibis, asks questions, and then votes.',
-  minPlayers: 3,
+  minPlayers: 1,
   maxPlayers: 12,
 
   // Show only the fields we want editable
