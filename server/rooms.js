@@ -1,34 +1,38 @@
 import { customAlphabet } from 'nanoid';
+import crypto from 'crypto';
+import { sanitizeName, sanitizeText } from './utils/moderation.js';
 
 const nanoid = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 4);
+const ROOM_TTL_MS = 30 * 60 * 1000; // 30 min idle cleanup
 
 export function createRoomsManager(io, gamesRegistry) {
   const rooms = new Map(); // code -> room
 
   function listGames() {
     return Object.values(gamesRegistry).map(g => ({
-      key: g.key,
-      name: g.name,
-      description: g.description,
-      minPlayers: g.minPlayers,
-      maxPlayers: g.maxPlayers,
-      defaultSettings: g.defaultSettings || {},
-      settingsSchema: g.settingsSchema || {}
+      key: g.key, name: g.name, description: g.description,
+      minPlayers: g.minPlayers, maxPlayers: g.maxPlayers,
+      defaultSettings: g.defaultSettings || {}, settingsSchema: g.settingsSchema || {}
     }));
   }
 
   function createRoom({ ownerSocketId, gameKey }) {
     const code = nanoid();
     const game = gamesRegistry[gameKey] || Object.values(gamesRegistry)[0];
+    const now = Date.now();
     const room = {
       code,
-      createdAt: Date.now(),
-      ownerSocketId,            // host socket id (stage screen)
-      vipId: null,              // first player to join becomes VIP (socket id for now)
-      players: [],              // {id: socketId, name, score, online: true|false}
+      createdAt: now,
+      touchedAt: now,
+      ownerSocketId,
+      locked: false,       // when true, new players cannot join
+      hideCode: false,     // when true, host UI may hide room code
+      vipId: null,
+      players: [],         // {id, name, score, online, reconnectToken, role?}
       gameKey: game.key,
       gameState: game.createInitialState(),
-      _notify: () => io.to(code).emit('room:state', getPublicState(code)),
+      _timeout: null,
+      _notify: () => { room.touchedAt = Date.now(); io.to(code).emit('room:state', getPublicState(code)); },
       _send: (socketId, event, payload) => io.to(socketId).emit(event, payload)
     };
     rooms.set(code, room);
@@ -40,6 +44,7 @@ export function createRoomsManager(io, gamesRegistry) {
     if (!room) return;
     gamesRegistry[room.gameKey]?.onDispose?.(room);
     io.to(code).emit('room:ended', { reason });
+    clearTimeout(room._timeout);
     rooms.delete(code);
   }
 
@@ -48,7 +53,7 @@ export function createRoomsManager(io, gamesRegistry) {
     if (!room) return null;
     const game = gamesRegistry[room.gameKey];
     const players = room.players.map(p => ({
-      id: p.id, name: p.name, score: p.score || 0
+      id: p.id, name: p.name, score: p.score || 0, online: p.online !== false
     }));
     const gamePublic = game.public(room);
     return {
@@ -58,95 +63,128 @@ export function createRoomsManager(io, gamesRegistry) {
       hostId: room.ownerSocketId,
       vipId: room.vipId,
       players,
-      // expose schema so host UI can render compact settings
+      locked: room.locked,
+      hideCode: room.hideCode,
       settingsSchema: game.settingsSchema || {},
       ...gamePublic
     };
   }
 
-  function addPlayer(code, { id, name }) {
+  function addPlayer(code, { id, name, reconnectToken }) {
     const room = rooms.get(code);
     if (!room) return { ok: false, reason: 'Room not found' };
-    if (room.ownerSocketId === id) return { ok: false, reason: 'Host cannot join as a player' };
+    room.touchedAt = Date.now();
+    if (room.locked) return { ok: false, reason: 'Room is locked' };
+    if (room.ownerSocketId === id) return { ok: false, reason: 'Host cannot join' };
 
-    const game = gamesRegistry[room.gameKey];
-
-    // RECONNECT: If a player with same name exists but is offline, reclaim that seat
-    const existingByName = name ? room.players.find(p => (p.name || '').toLowerCase() === name.trim().toLowerCase()) : null;
-    if (existingByName && existingByName.online === false) {
-      const oldId = existingByName.id;
-      existingByName.id = id;
-      existingByName.online = true;
-      // If that seat was VIP, move VIP to the new socket id
+    // reconnect by token first
+    if (reconnectToken) {
+      const byToken = room.players.find(p => p.reconnectToken === reconnectToken);
+      if (byToken) {
+        const oldId = byToken.id;
+        byToken.id = id; byToken.online = true;
+        if (room.vipId === oldId) room.vipId = id;
+        return { ok: true, player: byToken, reconnected: true };
+      }
+    }
+    // name-based reconnect fallback
+    const cleanedName = sanitizeName(name);
+    const byName = room.players.find(p => (p.name || '').toLowerCase() === cleanedName.toLowerCase() && p.online === false);
+    if (byName) {
+      const oldId = byName.id;
+      byName.id = id; byName.online = true;
       if (room.vipId === oldId) room.vipId = id;
-      return { ok: true, player: existingByName, reconnected: true };
+      return { ok: true, player: byName, reconnected: true };
     }
 
-    // Normal join: block if full
+    // normal join
+    const game = gamesRegistry[room.gameKey];
     const onlineCount = room.players.filter(p => p.online !== false).length;
-    if (onlineCount >= game.maxPlayers) {
-      return { ok: false, reason: 'Room full' };
-    }
+    if (onlineCount >= game.maxPlayers) return { ok: false, reason: 'Room full' };
 
-    // If someone with the same name is already online, we still allow a *new* seat
-    // (you can add stricter checks later if you want to prevent duplicate names)
-    const player = { id, name: name?.trim() || `Player${room.players.length + 1}`, score: 0, online: true };
+    const player = {
+      id, name: cleanedName, score: 0, online: true,
+      reconnectToken: crypto.randomUUID()
+    };
     room.players.push(player);
-    if (!room.vipId) room.vipId = player.id; // first online player becomes VIP
+    if (!room.vipId) room.vipId = player.id;
     return { ok: true, player, reconnected: false };
   }
 
+  function kickPlayer(code, requesterId, targetId) {
+    const room = rooms.get(code); if (!room) return;
+    if (room.ownerSocketId !== requesterId && room.vipId !== requesterId) return;
+    const idx = room.players.findIndex(p => p.id === targetId);
+    if (idx >= 0) {
+      const [p] = room.players.splice(idx,1);
+      io.to(p.id).emit('player:kicked', { code });
+      io.sockets.sockets.get(p.id)?.leave(code);
+      room._notify();
+    }
+  }
+
+  function lockRoom(code, requesterId, on=true) {
+    const room = rooms.get(code); if (!room) return;
+    if (room.ownerSocketId !== requesterId && room.vipId !== requesterId) return;
+    room.locked = !!on; room._notify();
+  }
+  function toggleHideCode(code, requesterId, on=true) {
+    const room = rooms.get(code); if (!room) return;
+    if (room.ownerSocketId !== requesterId && room.vipId !== requesterId) return;
+    room.hideCode = !!on; room._notify();
+  }
+
   function switchGame(code, gameKey, requesterId) {
-    const room = rooms.get(code);
-    if (!room || room.ownerSocketId !== requesterId) return;
-    const next = gamesRegistry[gameKey] || Object.values(gamesRegistry)[0];
+    const room = rooms.get(code); if (!room || room.ownerSocketId !== requesterId) return;
     gamesRegistry[room.gameKey]?.onDispose?.(room);
+    const next = gamesRegistry[gameKey] || Object.values(gamesRegistry)[0];
     room.gameKey = next.key;
     room.gameState = next.createInitialState();
+    room._notify();
   }
 
   function startGame(code, requesterId) {
-    const room = rooms.get(code);
-    if (!room) return;
+    const room = rooms.get(code); if (!room) return;
     if (room.ownerSocketId !== requesterId && room.vipId !== requesterId) return;
-    const game = gamesRegistry[room.gameKey];
-    game.onStart(room);
+    gamesRegistry[room.gameKey].onStart(room);
   }
 
   function handleGameEvent(code, socketId, type, payload) {
-    const room = rooms.get(code);
-    if (!room) return;
+    const room = rooms.get(code); if (!room) return;
+    room.touchedAt = Date.now();
     const game = gamesRegistry[room.gameKey];
+    // sanitize common text fields defensively
+    if (payload?.text) payload.text = sanitizeText(payload.text);
     game.onEvent(room, { socketId, type, payload });
   }
 
   function handleDisconnect(socketId) {
     const roomsToUpdate = [];
     for (const room of rooms.values()) {
-      if (room.ownerSocketId === socketId) {
-        endRoom(room.code, 'Host disconnected');
+      if (room.ownerSocketId === socketId) { // host left
+        // let room live for TTL in case host reconnects; do not end immediately
         continue;
       }
       const player = room.players.find(p => p.id === socketId);
-      if (player) {
-        // Mark offline but keep their seat for reconnection
-        player.online = false;
-        // Do NOT clear VIP; keep VIP tied to the old id until they reconnect.
-        roomsToUpdate.push(room.code);
-      }
+      if (player) { player.online = false; roomsToUpdate.push(room.code); }
     }
     return { roomsToUpdate };
   }
 
+  // idle cleanup loop
+  setInterval(() => {
+    const now = Date.now();
+    for (const [code, room] of rooms.entries()) {
+      const activeOnline = room.players.some(p => p.online) || room.ownerSocketId;
+      if (!activeOnline) {
+        if (now - room.touchedAt > ROOM_TTL_MS) endRoom(code, 'Idle timeout');
+      }
+    }
+  }, 60_000);
+
   return {
-    listGames,
-    createRoom,
-    endRoom,
-    addPlayer,
-    switchGame,
-    startGame,
-    handleGameEvent,
-    handleDisconnect,
-    getPublicState
+    listGames, createRoom, endRoom, addPlayer, kickPlayer,
+    lockRoom, toggleHideCode, switchGame, startGame,
+    handleGameEvent, handleDisconnect, getPublicState
   };
 }
