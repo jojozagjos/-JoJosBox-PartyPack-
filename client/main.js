@@ -1,10 +1,12 @@
 import { io } from 'https://cdn.socket.io/4.7.2/socket.io.esm.min.js';
 import { makeCtx } from './games/_sdk.js';
+import { AudioManager } from './audio.js';
 
-// vh sizing helper (so no stray scroll)
+// Viewport sizing to eliminate stray scroll
 function setVhVar(){ const vh = window.innerHeight * 0.01; document.documentElement.style.setProperty('--vh', `${vh}px`); }
 setVhVar(); window.addEventListener('resize', setVhVar); window.addEventListener('orientationchange', setVhVar);
 
+// Per-game client modules
 const gameModules = import.meta.glob('./games/*/client.js');
 
 const socket = io({ autoConnect: true });
@@ -20,11 +22,8 @@ const tabPlayer = el('tabPlayer'), tabHost = el('tabHost');
 const playerStage = el('playerStage'), hostStage = el('hostStage');
 
 function switchTab(which){
-  // NEW: if player has joined, do not allow going to Host tab
   if (which === 'host' && stateRef.playerLocked) return;
-  // Existing: if host has created a room, do not allow going back to player
   if (which === 'player' && stateRef.hostLocked) return;
-
   if (which === 'player') {
     tabPlayer.classList.add('active'); tabHost.classList.remove('active');
     show(playerStage, true); show(hostStage, false);
@@ -35,8 +34,7 @@ function switchTab(which){
   }
 }
 tabPlayer.onclick = () => switchTab('player');
-tabHost.onclick   = () => {
-  // If in Back mode (hostLocked), Host tab acts as "Back to list"
+tabHost.onclick = () => {
   if (stateRef.hostLocked) {
     const st = stateRef.current; if (st?.code) socket.emit('host:returnToMenu', { code: st.code });
     return;
@@ -46,14 +44,14 @@ tabHost.onclick   = () => {
 switchTab('player');
 
 /* Player join + reconnect */
-const LS_KEY = 'jojos:lastJoin';
+const LS_JOIN = 'jojos:lastJoin';
 const playerJoinRow = el('playerJoinRow');
 const joinBtn = el('joinBtn'), joinCode = el('joinCode'), playerName = el('playerName');
 const playerArea = el('playerArea'), playerUI = el('playerUI');
 const playerTimer = el('playerTimer'), playerTimerBar = el('playerTimerBar');
 
-function saveJoinInfo(code, name){ try{ localStorage.setItem(LS_KEY, JSON.stringify({ code, name })); }catch{} }
-function loadJoinInfo(){ try{ return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); }catch{ return null; } }
+function saveJoinInfo(code, name){ try{ localStorage.setItem(LS_JOIN, JSON.stringify({ code, name })); }catch{} }
+function loadJoinInfo(){ try{ return JSON.parse(localStorage.getItem(LS_JOIN) || 'null'); }catch{ return null; } }
 
 const last = loadJoinInfo();
 if (last?.code) joinCode.value = last.code;
@@ -66,12 +64,11 @@ joinBtn.onclick = () => {
   saveJoinInfo(code, name);
   socket.emit('player:join', { code, name });
 };
-socket.on('player:joined', ({ code, playerId }) => {
+socket.on('player:joined', ({ playerId }) => {
   stateRef.myPlayerId = playerId;
   show(playerJoinRow, false);
   show(playerArea, true);
-
-  // NEW: lock Host tab for players after they join
+  // Lock Host tab for players once joined
   stateRef.playerLocked = true;
   tabHost.style.opacity = '0.45';
   tabHost.style.pointerEvents = 'none';
@@ -81,10 +78,17 @@ socket.on('player:joinFailed', ({ reason }) => alert('Join failed: ' + reason));
 /* Host picker & live shell */
 const hostPre = el('hostPre'), gamePickerHost = el('gamePickerHost'), hostLive = el('hostLive');
 const roomCodeEl = el('roomCode'), joinUrlEl = el('joinUrl');
+const audioToggle = el('audioToggle'); // new button
+
+const LS_AUDIO = 'jojos:audioEnabled';
+function syncAudioButton(){
+  audioToggle.textContent = AudioManager.isEnabled() ? 'Mute' : 'Enable sound';
+}
 
 socket.on('games:list:resp', (games) => {
   gamePickerHost.innerHTML = '';
-  const grid = document.createElement('div'); grid.className = 'list';
+  const grid = document.createElement('div');
+  grid.className = 'list';
   games.forEach(g => {
     const card = document.createElement('button');
     card.className = 'item';
@@ -101,6 +105,9 @@ socket.on('games:list:resp', (games) => {
   tabHost.textContent = 'Host';
   tabPlayer.style.opacity = '';
   tabPlayer.style.pointerEvents = '';
+
+  // Hide audio toggle when not in a room
+  if (audioToggle) audioToggle.style.display = 'none';
 });
 
 socket.on('host:roomCreated', ({ code }) => {
@@ -114,17 +121,34 @@ socket.on('host:roomCreated', ({ code }) => {
   tabHost.textContent = 'Back';
   tabPlayer.style.opacity = '0.45';
   tabPlayer.style.pointerEvents = 'none';
+
+  // Show audio toggle for host; restore last state and unlock on first click
+  if (audioToggle) {
+    audioToggle.style.display = '';
+    const remembered = (localStorage.getItem(LS_AUDIO) || 'off') === 'on';
+    AudioManager.setEnabled(remembered);
+    syncAudioButton();
+    // First interaction also unlocks autoplay restrictions
+    audioToggle.onclick = async () => {
+      await AudioManager.unlockWithGesture();
+      const next = !AudioManager.isEnabled();
+      AudioManager.setEnabled(next);
+      localStorage.setItem(LS_AUDIO, next ? 'on' : 'off');
+      syncAudioButton();
+    };
+  }
 });
 
 socket.on('host:returnedToMenu', () => {
   roomCodeEl.textContent = '';
   show(hostPre, true); show(hostLive, false);
 
-  // Unlock and reset tab label
   stateRef.hostLocked = false;
   tabHost.textContent = 'Host';
   tabPlayer.style.opacity = '';
   tabPlayer.style.pointerEvents = '';
+
+  if (audioToggle) audioToggle.style.display = 'none';
 });
 
 /* Host live controls */
@@ -156,7 +180,7 @@ function startTimer(deadline){
   clearInterval(timerInterval);
   if (!deadline) { show(hostTimer,false); show(playerTimer,false); return; }
   show(hostTimer,true); show(playerTimer,true);
-  const total = Math.max(1, deadline - Date.now()); // avoid divide by zero
+  const total = Math.max(1, deadline - Date.now());
   timerInterval = setInterval(() => {
     const remaining = Math.max(0, deadline - Date.now());
     const pct = Math.max(0, Math.min(1, remaining / total));
@@ -186,9 +210,9 @@ async function getGameModule(key) {
 
 function isHost(){ const st = stateRef.current; return st && st.hostId === stateRef.mySocketId; }
 function isVIP(){ const st = stateRef.current; return st && st.vipId === stateRef.myPlayerId; }
-const helpers = { el, show, escapeHtml, isHost, isVIP };
+const helpers = { el, show, escapeHtml, isHost, isVIP, AudioManager };
 
-/* Compact settings in SECONDS (convert to ms when sending) */
+/* Settings (already implemented earlier, kept minimal here) */
 function renderSettingsCompact(state) {
   if (state.phase !== 'lobby' || !isHost()) { show(settingsPanel, false); return; }
   const schema = state.settingsSchema || {};
@@ -200,17 +224,14 @@ function renderSettingsCompact(state) {
   editableEntries.forEach(([key, meta]) => {
     const wrap = document.createElement('div'); wrap.className = 'settings-field';
     const label = document.createElement('label');
-    // Label shows seconds unit explicitly
     const unit = ' (s)';
     label.textContent = (meta.label || key) + unit;
 
-    // Render seconds values in the inputs
     const input = document.createElement('input');
     input.type = 'number';
     const valMs = values[key];
     if (typeof valMs !== 'undefined') input.value = Math.round(Number(valMs)/1000) || 0;
 
-    // Convert schema min/max/step from ms -> s for the UI
     const minS = Number.isFinite(meta.min) ? Math.round(meta.min/1000) : 3;
     const maxS = Number.isFinite(meta.max) ? Math.round(meta.max/1000) : 180;
     const stepS = Number.isFinite(meta.step) ? Math.max(1, Math.round(meta.step/1000)) : 1;
@@ -222,7 +243,7 @@ function renderSettingsCompact(state) {
       settingsBody.querySelectorAll('input').forEach(inp => {
         const k = inp.getAttribute('data-key');
         const sec = Math.max(minS, Math.min(maxS, Number(inp.value)||0));
-        payload[k] = sec * 1000; // send ms to server
+        payload[k] = sec * 1000; // send ms
       });
       socket.emit('game:event', { code: state.code, type: 'host:updateSettings', payload });
     });
@@ -233,11 +254,12 @@ function renderSettingsCompact(state) {
   settingsBody.classList.add('hidden');
 }
 
+/* Render loop per room state */
 socket.on('room:state', async (state) => {
   stateRef.current = state;
   startTimer(state?.phaseDeadline || null);
 
-  // Update Host tab label depending on hosting
+  // Host tab label
   tabHost.textContent = state.code ? (stateRef.hostLocked ? 'Back' : 'Host') : 'Host';
 
   renderSettingsCompact(state);
@@ -262,9 +284,13 @@ socket.on('room:state', async (state) => {
       if (p.id === state.vipId) d.classList.add('vip');
       lobbyPlayers.appendChild(d);
     });
+    if (audioToggle && isHost()) audioToggle.style.display = ''; // visible during lobby for host
   } else {
     show(lobbyBlock, false);
   }
 
   show(endOptions, state.phase === 'done');
 });
+
+/* Keep picker noop listener to satisfy previous wiring */
+socket.on('games:list:resp', () => {});

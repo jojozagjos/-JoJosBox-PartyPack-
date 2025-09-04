@@ -164,3 +164,23 @@ html, body { height:100%; overflow:hidden; }
 .card { overflow: hidden; }
 .stage { min-height: 0; }
 #hostLive, #hostPre, #playerStage { overflow:auto; }
+
+/* --- Now playing footer --- */
+.card { position: relative; }
+.nowPlaying { position: absolute; right: 18px; bottom: 10px; font-size: 12px; color: var(--muted); opacity:.9; pointer-events:none; }
+.nowPlaying .note { margin-right:6px; opacity:.8; }
+
+/* --- Now playing footer --- */
+.card { position: relative; }
+.nowPlaying { position: absolute; right: 18px; bottom: 10px; font-size: 12px; color: var(--muted); opacity:.9; pointer-events:none; }
+.nowPlaying .note { margin-right:6px; opacity:.8; }
+
+/* --- Now playing footer --- */
+.card { position: relative; }
+.nowPlaying { position: absolute; right: 18px; bottom: 10px; font-size: 12px; color: var(--muted); opacity:.9; pointer-events:none; }
+.nowPlaying .note { margin-right:6px; opacity:.8; }
+
+/* --- Now playing footer --- */
+.card { position: relative; }
+.nowPlaying { position: absolute; right: 18px; bottom: 10px; font-size: 12px; color: var(--muted); opacity:.9; pointer-events:none; }
+.nowPlaying .note { margin-right:6px; opacity:.8; }
