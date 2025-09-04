@@ -15,9 +15,7 @@ const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT || 3000;
 
 const app = express();
-app.use(helmet({
-  contentSecurityPolicy: false
-}));
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
 
 // Static assets with caching
@@ -37,7 +35,7 @@ app.get('*', (req, res) => {
 
 const server = http.createServer(app);
 const io = new SocketIOServer(server, { cors: { origin: '*' } });
-// NOTE for horizontal scaling: plug a Redis adapter here (socket.io-redis) and enable sticky sessions on your load balancer.
+// For horizontal scale later: add a Redis adapter and sticky sessions.
 
 const rooms = createRoomsManager(io, gamesRegistry);
 
@@ -67,16 +65,6 @@ io.on('connection', (socket) => {
     io.to(code).emit('room:state', rooms.getPublicState(code));
   });
 
-  socket.on('host:lockRoom', ({ code, on }) => {
-    rooms.lockRoom(code, socket.id, !!on);
-  });
-  socket.on('host:hideCode', ({ code, on }) => {
-    rooms.toggleHideCode(code, socket.id, !!on);
-  });
-  socket.on('host:kick', ({ code, playerId }) => {
-    rooms.kickPlayer(code, socket.id, playerId);
-  });
-
   socket.on('player:join', ({ code, name, reconnectToken }) => {
     const { ok, reason, player, reconnected } = rooms.addPlayer(code, { id: socket.id, name, reconnectToken });
     if (!ok) return socket.emit('player:joinFailed', { reason });
@@ -91,14 +79,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('game:event', ({ code, type, payload }) => {
-    // rate limit spammy event types
     const rlTypes = new Set([
       'alibi:submit','interrogate:submit','vote:submit',
       'host:updateSettings','vip:start','vip:skipTutorial'
     ]);
-    if (rlTypes.has(type) && !allow(socket.id, type, { limit: 6, perMs: 10_000 })) {
-      return; // silently drop
-    }
+    if (rlTypes.has(type) && !allow(socket.id, type, { limit: 6, perMs: 10_000 })) return;
     rooms.handleGameEvent(code, socket.id, type, payload);
     io.to(code).emit('room:state', rooms.getPublicState(code));
   });

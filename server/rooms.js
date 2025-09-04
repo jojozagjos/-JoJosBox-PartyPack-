@@ -25,10 +25,8 @@ export function createRoomsManager(io, gamesRegistry) {
       createdAt: now,
       touchedAt: now,
       ownerSocketId,
-      locked: false,       // when true, new players cannot join
-      hideCode: false,     // when true, host UI may hide room code
       vipId: null,
-      players: [],         // {id, name, score, online, reconnectToken, role?}
+      players: [],         // {id, name, score, online, reconnectToken}
       gameKey: game.key,
       gameState: game.createInitialState(),
       _timeout: null,
@@ -55,16 +53,18 @@ export function createRoomsManager(io, gamesRegistry) {
     const players = room.players.map(p => ({
       id: p.id, name: p.name, score: p.score || 0, online: p.online !== false
     }));
-    const gamePublic = game.public(room);
+    const gamePublic = game.public(room) || {};
+    // Ensure playersInLobby is always present so clients never miss it
+    if (!Array.isArray(gamePublic.playersInLobby)) {
+      gamePublic.playersInLobby = players;
+    }
     return {
       code: room.code,
       gameKey: room.gameKey,
       gameName: game.name,
       hostId: room.ownerSocketId,
       vipId: room.vipId,
-      players,
-      locked: room.locked,
-      hideCode: room.hideCode,
+      players,                 // generic list for client UIs
       settingsSchema: game.settingsSchema || {},
       ...gamePublic
     };
@@ -74,7 +74,6 @@ export function createRoomsManager(io, gamesRegistry) {
     const room = rooms.get(code);
     if (!room) return { ok: false, reason: 'Room not found' };
     room.touchedAt = Date.now();
-    if (room.locked) return { ok: false, reason: 'Room is locked' };
     if (room.ownerSocketId === id) return { ok: false, reason: 'Host cannot join' };
 
     // reconnect by token first
@@ -123,17 +122,6 @@ export function createRoomsManager(io, gamesRegistry) {
     }
   }
 
-  function lockRoom(code, requesterId, on=true) {
-    const room = rooms.get(code); if (!room) return;
-    if (room.ownerSocketId !== requesterId && room.vipId !== requesterId) return;
-    room.locked = !!on; room._notify();
-  }
-  function toggleHideCode(code, requesterId, on=true) {
-    const room = rooms.get(code); if (!room) return;
-    if (room.ownerSocketId !== requesterId && room.vipId !== requesterId) return;
-    room.hideCode = !!on; room._notify();
-  }
-
   function switchGame(code, gameKey, requesterId) {
     const room = rooms.get(code); if (!room || room.ownerSocketId !== requesterId) return;
     gamesRegistry[room.gameKey]?.onDispose?.(room);
@@ -153,7 +141,6 @@ export function createRoomsManager(io, gamesRegistry) {
     const room = rooms.get(code); if (!room) return;
     room.touchedAt = Date.now();
     const game = gamesRegistry[room.gameKey];
-    // sanitize common text fields defensively
     if (payload?.text) payload.text = sanitizeText(payload.text);
     game.onEvent(room, { socketId, type, payload });
   }
@@ -161,10 +148,7 @@ export function createRoomsManager(io, gamesRegistry) {
   function handleDisconnect(socketId) {
     const roomsToUpdate = [];
     for (const room of rooms.values()) {
-      if (room.ownerSocketId === socketId) { // host left
-        // let room live for TTL in case host reconnects; do not end immediately
-        continue;
-      }
+      if (room.ownerSocketId === socketId) { continue; }
       const player = room.players.find(p => p.id === socketId);
       if (player) { player.online = false; roomsToUpdate.push(room.code); }
     }
@@ -184,7 +168,6 @@ export function createRoomsManager(io, gamesRegistry) {
 
   return {
     listGames, createRoom, endRoom, addPlayer, kickPlayer,
-    lockRoom, toggleHideCode, switchGame, startGame,
-    handleGameEvent, handleDisconnect, getPublicState
+    switchGame, startGame, handleGameEvent, handleDisconnect, getPublicState
   };
 }

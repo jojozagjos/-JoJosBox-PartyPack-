@@ -75,23 +75,22 @@ joinBtn?.addEventListener('click', () => {
 });
 socket.on('player:joined', ({ code, playerId, reconnectToken }) => {
   stateRef.myPlayerId = playerId;
-  show(playerJoinRow,false); show(playerArea,true);
+  // Always ensure player UI becomes visible
+  show(playerJoinRow,false);
+  show(playerArea,true);
   stateRef.playerLocked = true;
   if (tabHost){ tabHost.style.opacity = '0.45'; tabHost.style.pointerEvents = 'none'; }
-  // persist fresh token
   saveJoinInfo({ code, name: playerName.value || 'Player', reconnectToken });
 });
 socket.on('player:joinFailed', ({ reason }) => alert('Join failed: ' + reason));
-socket.on('player:kicked', ({ code }) => {
-  alert('You were removed by the host.');
-  location.href = '/';
-});
+socket.on('player:kicked', () => { alert('You were removed by the host.'); location.href = '/'; });
 
 /* Host picker & live shell */
 const hostPre = el('hostPre'), gamePickerHost = el('gamePickerHost'), hostLive = el('hostLive');
 const roomCodeEl = el('roomCode'), joinUrlEl = el('joinUrl');
 
 socket.on('games:list:resp', (games) => {
+  if (!gamePickerHost) return;
   gamePickerHost.innerHTML = '';
   const grid = document.createElement('div'); grid.className = 'list';
   games.forEach(g => {
@@ -125,27 +124,11 @@ socket.on('host:returnedToMenu', () => {
   applyFullscreenByPhase('lobby'); if (hostTopRow) show(hostTopRow, true);
 });
 
-/* Host live controls (anti-grief) */
+/* Host live controls (removed lock/hide UI) */
 const settingsPanel = el('settingsPanel');
 const settingsBody = el('settingsBody');
 const settingsToggle = el('settingsToggle');
 settingsToggle?.addEventListener('click', () => settingsBody.classList.toggle('hidden'));
-
-// quick control strip:
-const hostControls = document.createElement('div');
-hostControls.className = 'row';
-hostControls.innerHTML = `
-  <button id="ctlLock" class="btn">Lock Room</button>
-  <button id="ctlHide" class="btn">Hide Code</button>
-`;
-document.getElementById('hostLive')?.prepend(hostControls);
-
-document.getElementById('ctlLock')?.addEventListener('click', () => {
-  const st = stateRef.current; if (!st) return; socket.emit('host:lockRoom', { code: st.code, on: !st.locked });
-});
-document.getElementById('ctlHide')?.addEventListener('click', () => {
-  const st = stateRef.current; if (!st) return; socket.emit('host:hideCode', { code: st.code, on: !st.hideCode });
-});
 
 // lobby components
 const lobbyBlock = el('lobbyBlock'), lobbyPlayers = el('lobbyPlayers');
@@ -247,10 +230,6 @@ socket.on('room:state', async (state) => {
 
   renderSettingsCompact(state);
 
-  // host code visibility
-  const codeWrap = document.getElementById('roomCodeWrap');
-  if (codeWrap) codeWrap.style.visibility = state.hideCode ? 'hidden' : 'visible';
-
   // render game UIs
   const mod = state?.gameKey ? await getGameModule(state.gameKey) : null;
   const ctx = makeCtx({ socket, helpers, stateRef });
@@ -262,16 +241,15 @@ socket.on('room:state', async (state) => {
   if (mod?.renderHostSettings && state?.phase === 'lobby') mod.renderHostSettings(ctx, state);
   if (mod?.renderPlayer) mod.renderPlayer(ctx, state);
 
-  // lobby list + kick buttons
+  // LOBBY: always use playersInLobby if present; fallback to players
   if (state.phase === 'lobby' || state.phase === 'tutorial') {
     show(lobbyBlock, true);
     lobbyPlayers.innerHTML = '';
-    (state.playersInLobby || state.players || []).forEach(p => {
-      const d = document.createElement('div'); d.className = 'pill2'; d.style.display='flex'; d.style.justifyContent='space-between'; d.style.alignItems='center';
-      const left = document.createElement('span'); left.textContent = p.name + (p.id === state.vipId ? ' ★VIP' : '');
-      const right = document.createElement('button'); right.className='btn'; right.textContent='Kick';
-      right.onclick = () => socket.emit('host:kick', { code: state.code, playerId: p.id });
-      d.appendChild(left); if (isHost()) d.appendChild(right);
+    const list = (state.playersInLobby && Array.isArray(state.playersInLobby) ? state.playersInLobby : (state.players || []));
+    list.forEach(p => {
+      const d = document.createElement('div'); d.className = 'pill2';
+      d.textContent = p.name + (p.id === state.vipId ? ' ★VIP' : '');
+      if (p.id === state.vipId) d.classList.add('vip');
       lobbyPlayers.appendChild(d);
     });
   } else {
