@@ -20,9 +20,9 @@ const tabPlayer = el('tabPlayer'), tabHost = el('tabHost');
 const playerStage = el('playerStage'), hostStage = el('hostStage');
 
 function switchTab(which){
-  // NEW: if player has joined, do not allow going to Host tab
+  // Prevent going to Host tab if player joined
   if (which === 'host' && stateRef.playerLocked) return;
-  // Existing: if host has created a room, do not allow going back to player
+  // Prevent going back to Player tab if host created room
   if (which === 'player' && stateRef.hostLocked) return;
 
   if (which === 'player') {
@@ -36,9 +36,12 @@ function switchTab(which){
 }
 tabPlayer.onclick = () => switchTab('player');
 tabHost.onclick   = () => {
-  // If in Back mode (hostLocked), Host tab acts as "Back to list"
+  const st = stateRef.current;
+  // If hostLocked, Host tab is acting as Back
   if (stateRef.hostLocked) {
-    const st = stateRef.current; if (st?.code) socket.emit('host:returnToMenu', { code: st.code });
+    // Disable Back if game is active (not lobby/done)
+    if (st?.phase && st.phase !== 'lobby' && st.phase !== 'done') return;
+    if (st?.code) socket.emit('host:returnToMenu', { code: st.code });
     return;
   }
   switchTab('host');
@@ -71,7 +74,7 @@ socket.on('player:joined', ({ code, playerId }) => {
   show(playerJoinRow, false);
   show(playerArea, true);
 
-  // NEW: lock Host tab for players after they join
+  // Lock Host tab for players after they join
   stateRef.playerLocked = true;
   tabHost.style.opacity = '0.45';
   tabHost.style.pointerEvents = 'none';
@@ -96,7 +99,6 @@ socket.on('games:list:resp', (games) => {
   gamePickerHost.appendChild(grid);
   show(hostPre, true); show(hostLive, false);
 
-  // Reset host lock and tab label
   stateRef.hostLocked = false;
   tabHost.textContent = 'Host';
   tabPlayer.style.opacity = '';
@@ -109,7 +111,6 @@ socket.on('host:roomCreated', ({ code }) => {
   show(hostPre, false); show(hostLive, true);
   switchTab('host');
 
-  // Lock Player tab & change Host tab label to Back
   stateRef.hostLocked = true;
   tabHost.textContent = 'Back';
   tabPlayer.style.opacity = '0.45';
@@ -120,7 +121,6 @@ socket.on('host:returnedToMenu', () => {
   roomCodeEl.textContent = '';
   show(hostPre, true); show(hostLive, false);
 
-  // Unlock and reset tab label
   stateRef.hostLocked = false;
   tabHost.textContent = 'Host';
   tabPlayer.style.opacity = '';
@@ -143,7 +143,7 @@ btnSame.onclick = () => stateRef.current && socket.emit('game:event', { code: st
 btnNew.onclick  = () => stateRef.current && socket.emit('game:event', { code: stateRef.current.code, type: 'host:restartNew' });
 btnMenu.onclick = () => stateRef.current && socket.emit('host:returnToMenu', { code: stateRef.current.code });
 
-/* Secret brief to criminal */
+/* Secret brief */
 socket.on('alibi:brief', ({ brief }) => {
   const c = document.createElement('div'); c.className = 'item';
   c.innerHTML = `<strong>Secret brief</strong><br>${escapeHtml(brief)}`;
@@ -156,7 +156,7 @@ function startTimer(deadline){
   clearInterval(timerInterval);
   if (!deadline) { show(hostTimer,false); show(playerTimer,false); return; }
   show(hostTimer,true); show(playerTimer,true);
-  const total = Math.max(1, deadline - Date.now()); // avoid divide by zero
+  const total = Math.max(1, deadline - Date.now());
   timerInterval = setInterval(() => {
     const remaining = Math.max(0, deadline - Date.now());
     const pct = Math.max(0, Math.min(1, remaining / total));
@@ -165,7 +165,7 @@ function startTimer(deadline){
   }, 100);
 }
 
-/* Dynamic game module loader */
+/* Game loader */
 const gameModulesCache = new Map();
 async function getGameModule(key) {
   if (gameModulesCache.has(key)) return gameModulesCache.get(key);
@@ -188,7 +188,7 @@ function isHost(){ const st = stateRef.current; return st && st.hostId === state
 function isVIP(){ const st = stateRef.current; return st && st.vipId === stateRef.myPlayerId; }
 const helpers = { el, show, escapeHtml, isHost, isVIP };
 
-/* Compact settings in SECONDS (convert to ms when sending) */
+/* Compact settings (seconds UI, ms to server) */
 function renderSettingsCompact(state) {
   if (state.phase !== 'lobby' || !isHost()) { show(settingsPanel, false); return; }
   const schema = state.settingsSchema || {};
@@ -200,17 +200,13 @@ function renderSettingsCompact(state) {
   editableEntries.forEach(([key, meta]) => {
     const wrap = document.createElement('div'); wrap.className = 'settings-field';
     const label = document.createElement('label');
-    // Label shows seconds unit explicitly
-    const unit = ' (s)';
-    label.textContent = (meta.label || key) + unit;
+    label.textContent = (meta.label || key) + ' (s)';
 
-    // Render seconds values in the inputs
     const input = document.createElement('input');
     input.type = 'number';
     const valMs = values[key];
     if (typeof valMs !== 'undefined') input.value = Math.round(Number(valMs)/1000) || 0;
 
-    // Convert schema min/max/step from ms -> s for the UI
     const minS = Number.isFinite(meta.min) ? Math.round(meta.min/1000) : 3;
     const maxS = Number.isFinite(meta.max) ? Math.round(meta.max/1000) : 180;
     const stepS = Number.isFinite(meta.step) ? Math.max(1, Math.round(meta.step/1000)) : 1;
@@ -222,7 +218,7 @@ function renderSettingsCompact(state) {
       settingsBody.querySelectorAll('input').forEach(inp => {
         const k = inp.getAttribute('data-key');
         const sec = Math.max(minS, Math.min(maxS, Number(inp.value)||0));
-        payload[k] = sec * 1000; // send ms to server
+        payload[k] = sec * 1000;
       });
       socket.emit('game:event', { code: state.code, type: 'host:updateSettings', payload });
     });
@@ -233,12 +229,28 @@ function renderSettingsCompact(state) {
   settingsBody.classList.add('hidden');
 }
 
+/* Room state */
 socket.on('room:state', async (state) => {
   stateRef.current = state;
   startTimer(state?.phaseDeadline || null);
 
-  // Update Host tab label depending on hosting
-  tabHost.textContent = state.code ? (stateRef.hostLocked ? 'Back' : 'Host') : 'Host';
+  // Host tab label + disable during active game
+  if (state.code) {
+    if (stateRef.hostLocked) {
+      tabHost.textContent = 'Back';
+      if (state.phase !== 'lobby' && state.phase !== 'done') {
+        tabHost.style.opacity = '0.45';
+        tabHost.style.pointerEvents = 'none';
+      } else {
+        tabHost.style.opacity = '';
+        tabHost.style.pointerEvents = '';
+      }
+    } else {
+      tabHost.textContent = 'Host';
+    }
+  } else {
+    tabHost.textContent = 'Host';
+  }
 
   renderSettingsCompact(state);
 
